@@ -19,9 +19,9 @@ var Emulator =
   screenDC: 0,
   charMapDC: 0,
 
-  //          0     1     2     3     4     5     6     7     8     9   10   11
-  regNames: ['A',  'B',  'C',  'X',  'Y',  'Z',  'I',  'J', 'SP', 'PC', 'O', 'if' ],
-  regs:     [ 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   0,   1 ],
+  //          0     1     2     3     4     5     6     7     8     9   10   11    12
+  regNames: ['A',  'B',  'C',  'X',  'Y',  'Z',  'I',  'J', 'SP', 'PC', 'O', 'if', 'bp' ],
+  regs:     [ 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,   0,   1,   0xFFFF ],
   opNames:  [ '', 'SET', 'ADD', 'SUB', 'MUL', 'DIV', 'MOD', 'SHL', 'SHR', 'AND', 'BOR', 'XOR', 'IFE', 'IFN', 'IFG', 'IFB'],
   opCycles: [  0,    1,     2,     2,     2,     3,     3,     2,     2,     1,     1,     1,     2,     2,     2,     2],  
   mem: new Array(0x10000),
@@ -63,12 +63,13 @@ function GetVal( _code )
   switch( _code )
   {
     case 0x18: 
+      var result = Emulator.mem[Emulator.regs[8]];
       Emulator.regs[8] = (Emulator.regs[8]+1)&0xFFFF;
-      return Emulator.mem[Emulator.mem[Emulator.regs[8]]];
-    case 0x19: return Emulator.mem[Emulator.mem[(Emulator.regs[8])]];
+      return result;
+    case 0x19: return Emulator.mem[(Emulator.regs[8])];
     case 0x1A: 
       Emulator.regs[8] = (Emulator.regs[8]+0xFFFF)&0xFFFF;
-      return Emulator.mem[Emulator.mem[Emulator.regs[8]]];
+      return Emulator.mem[Emulator.regs[8]];
     case 0x1B: return Emulator.regs[8];
     case 0x1C: return Emulator.regs[9];
     case 0x1D: return Emulator.regs[10];
@@ -100,7 +101,7 @@ function GetVal( _code )
 }
 
 // -----------------------
-function SetVal( _code, _val )
+function SetVal( _code, _val, _apc, _asp )
 {
   // note a has already been fetched with GetVal
   if( _code < 0x20 )
@@ -113,45 +114,60 @@ function SetVal( _code, _val )
     {
       switch( _code )
       {
-        case 0x18: Emulator.mem[(Emulator.regs[8]+0xFFFF)&0xFFFF] = _val; return;
-        case 0x19: Emulator.mem[Emulator.regs[8]] = _val; return;
-        case 0x1A: Emulator.mem[Emulator.regs[8]] = _val; return;
+        case 0x18: Emulator.mem[(_asp+0xFFFF)&0xFFFF] = _val; return;
+        case 0x19: Emulator.mem[_asp] = _val; return;
+        case 0x1A: Emulator.mem[_asp] = _val; return;
         case 0x1B: Emulator.regs[8] = _val; return;
         case 0x1C: Emulator.regs[9] = _val; return;
         case 0x1D: Emulator.regs[10] = _val; return;
-        case 0x1E: Emulator.mem[Emulator.mem[(Emulator.regs[9]+0xFFFF)&0xFFFF]] = _val; return;
-        case 0x1F: Emulator.mem[(Emulator.regs[9]+0xFFFF)&0xFFFF] = _val; return;
+        case 0x1E: 
+                Emulator.mem[Emulator.mem[_apc]] = _val; 
+              return;
+        case 0x1F: 
+                Emulator.mem[_apc] = _val; 
+              return;
       }
     }
     if( _code < 0x10 )
     {
       Emulator.mem[Emulator.regs[_code-0x08]] = _val; return;            
     }
-    Emulator.mem[Emulator.mem[(Emulator.regs[9]+0xFFFF)&0xFFFF] + Emulator.regs[_code-0x10]] = _val;
+    Emulator.mem[Emulator.mem[_apc] + Emulator.regs[_code-0x10]] = _val;
   }
 }
 
 // -----------------------
 Emulator.Step = function()
 {
+  if( Emulator.regs[9] == Emulator.regs[12] )
+  {
+    Console.Log( '*** breakpoint hit, emulation paused.' );
+    Emulator.paused = true;
+    return;
+  }
+
   var op = Emulator.mem[Emulator.regs[9]];
   Emulator.regs[9] = (Emulator.regs[9]+1)&0xFFFF;
   var opcode = op & 0xF;
   var a = (op>>>4)&0x3F;
   var b = (op>>>10)&0x3F;
-
+  var apc = Emulator.regs[9];
+  var asp = Emulator.regs[8];
+  
   if( Emulator.regs[11] )
   {
     var result;
 
     if( opcode == 0 )
     {
-      switch( b )
+      var aval = GetVal(b);
+      switch( a )
       {
         case 0x1: // JSR a
             Emulator.cycles+=2;
-            Emulator.mem[--Emulator.regs[8]] = Emulator.regs[9];
-            Emulator.regs[9] = GetVal(a);
+            Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF)&0xFFFF;
+            Emulator.mem[Emulator.regs[8]] = Emulator.regs[9];
+            Emulator.regs[9] = aval;
           break;
 
         default:
@@ -163,75 +179,77 @@ Emulator.Step = function()
     else
     {
       Emulator.cycles+=Emulator.opCycles[opcode];
+      var aval = GetVal(a);
+      var bval = GetVal(b);
       var tmp;
       switch( opcode )
       {
         case 0x1: // SET
-              result = GetVal(b);
+              result = bval;
             break;
         case 0x2: // ADD
-              tmp = GetVal(a) + GetVal(b);
+              tmp = aval + bval;
               result = tmp & 0xFFFF;
               Emulator.regs[10] = (tmp>>>16) & 0xFFFF;
             break;
         case 0x3: // SUB
-              tmp = (GetVal(a) - GetVal(b))>>>0;
+              tmp = (aval - bval)>>>0;
               result = (tmp>>>0) & 0xFFFF;
               Emulator.regs[10] = (tmp<0) ? 0xFFFF : 0;
             break;
         case 0x4: // MUL
-              tmp = GetVal(a) * GetVal(b);
+              tmp = aval * bval;
               result = tmp & 0xFFFF;
               Emulator.regs[10] = (tmp>>>16) & 0xFFFF;
             break;
         case 0x5: // DIV
-              Emulator.regs[10] = GetVal(a);
-              tmp = GetVal(b);
+              Emulator.regs[10] = aval;
+              tmp = bval;
               result = tmp ? Math.floor(Emulator.regs[10]/tmp) : 0;
               Emulator.regs[10] = tmp ? ((Math.floor((Emulator.regs[10]<<16)/tmp)&0xFFFF)>>>0) : 0;
             break;
         case 0x6: // MOD
-              result = GetVal(a);
-              tmp = GetVal(b);
+              result = aval;
+              tmp = bval;
               result = tmp ? (result%tmp) : 0;
             break;
         case 0x7: // SHL
-              tmp = (GetVal(a) << GetVal(b))>>>0;
+              tmp = (aval << bval)>>>0;
               result = (tmp>>>0) & 0xFFFF;
               Emulator.regs[10] = (tmp>>>16) & 0xFFFF;
             break;
         case 0x8: // SHR
-              tmp = (GetVal(a) << 16) >>> GetVal(b);
+              tmp = (aval << 16) >>> bval;
               result = (tmp>>>16) & 0xFFFF;
               Emulator.regs[10] = tmp & 0xFFFF;
             break;
         case 0x9: // AND
-              result = (GetVal(a) & GetVal(b))>>>0;
+              result = (aval & bval)>>>0;
             break;
         case 0xA: // BOR
-              result = (GetVal(a) | GetVal(b))>>>0;
+              result = (aval | bval)>>>0;
             break;
         case 0xB: // XOR
-              result = (GetVal(a) ^ GetVal(b))>>>0;
+              result = (aval ^ bval)>>>0;
             break;
         case 0xC: // IFE
-              Emulator.regs[11] = (GetVal(a) == GetVal(b));
+              Emulator.regs[11] = (aval == bval);
             break;
         case 0xD: // IFN
-              Emulator.regs[11] = (GetVal(a) != GetVal(b));
+              Emulator.regs[11] = (aval != bval);
             break;
         case 0xE: // IFG
-              Emulator.regs[11] = (GetVal(a) > GetVal(b));
+              Emulator.regs[11] = (aval > bval);
             break;
         case 0xF: // IFB
-              Emulator.regs[11] = (GetVal(a) & GetVal(b));
+              Emulator.regs[11] = (aval & bval);
             break;
       }
     }
     
     if( result != undefined )
     {
-      SetVal( a, result );
+      SetVal( a, result, apc, asp );
     }    
    }
    else
@@ -304,10 +322,10 @@ Emulator.Disassemble = function(_addr)
 
   if( opcode == 0 )
   {
-    switch( opcode )
+    switch( (op>>>4)&0x3F )
     {
-      case 1: result += 'JSR ' + a[0]; break;
-      default: result += '?'+H8(opcode)+' ' + a[0]; break;
+      case 1: result += 'JSR ' + b[0]; break;
+      default: result += '?'+H8((op>>>4)&0x3F)+' ' + b[0]; break;
     }
   }
   else
@@ -336,6 +354,10 @@ Emulator.Status = function()
     stat += Emulator.regNames[i] + ':' + H16(Emulator.regs[i]) + '  ';
   }
   stat += '\n' + Emulator.Disassemble(Emulator.regs[9])[0];
+  if( !Emulator.regs[11] )
+  {
+    stat += ' ; ( will skip ) ';
+  }
   
   Console.Log(stat); 
 }
@@ -343,16 +365,17 @@ Emulator.Status = function()
 // -----------------------
 Emulator.Reset = function()
 {
-  Emulator.regs = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ];
+  Emulator.regs = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFFFF ];
   Emulator.mem = new Array(0x10000);
   Emulator.cycles = 0;
   Emulator.operandCycles = [];
   try
   {
-    Emulator.regs = new Uint16Array(12);
+    Emulator.regs = new Uint16Array(13);
     Emulator.mem = new Uint16Array(0x10000);
     Emulator.opCycles = new Uint16Array(Emulator.opCycles);
     Emulator.operandCycles = new Uint16Array(0x40);
+    Emulator.regs[12] = 0xFFFF;
   }
   catch(e)
   {
@@ -400,6 +423,29 @@ Emulator.Dump = function(_arg)
 }
 
 
+// -----------------------
+Emulator.Trace = function()
+{
+  var start = (new Date()).getTime();
+
+  while( !Emulator.paused ) 
+  {
+    if( ( (new Date()).getTime() - start ) > 5 )
+    {
+      setTimeout( "Emulator.Trace()", 0 );
+      return;
+    }
+    
+    var oldpc = Emulator.regs[9];
+    Emulator.Step();
+    Emulator.Status();
+    if( ( oldpc == Emulator.regs[9] ) && !Emulator.paused )
+    {
+      Console.Log("PC unchanged last step; pausing emulation");
+      Emulator.paused = 1;
+    }
+  }
+}
 
 // ---------
 // Assembler
@@ -548,8 +594,8 @@ Assembler.Grammar =
       reg_o: ["/;o\\s*/",             function(_m) { return function() { return 0x1d; } }],
       spinc: ["/\\[\\s*;sp\\s*[+][+]\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } }],
       spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x1a; } }],
-      push: ["/push\\s*/",            function(_m) { return function() { return 0x18; } }],
-      pop: ["/pop\\s*/",              function(_m) { return function() { return 0x1a; } }],
+      push: ["/push\\s*/",            function(_m) { return function() { return 0x1a; } }],
+      pop: ["/pop\\s*/",              function(_m) { return function() { return 0x18; } }],
       peek: ["/peek\\s*/",            function(_m) { return function() { return 0x1b; } } ],
 
       literal: ["expression",     function(_m) 
@@ -780,38 +826,54 @@ var DebugCommands =
     help: 'step\nSingle-steps the emulation.',
     fn: function()
     {
+      var tmp = Emulator.regs[12];
+      Emulator.regs[12] = (Emulator.regs[9]+3)&0xFFFF; // guaranteed not to hit
       Emulator.Step();
+      Emulator.regs[12] = tmp;
       Emulator.Status();
+    }
+  },
+
+  bp:
+  {
+    help: 'bp addr\nSets breakpoint to addr.',
+    fn: function( _args )
+    {
+      if( _args.length )
+      {
+        var addr = eval('0x'+_args.shift());
+        Emulator.regs[12] = addr;
+        Console.Log("Breakpoint set to " + H16(Emulator.regs[12]));
+      }
     }
   },
 
   trace:
   {
     help: 'trace\nRepeatedly single-steps the emulation.',
-    fn: function()
-    {
+    fn: function() 
+    { 
       Emulator.paused = 0;
-      while( !Emulator.paused )
-      {
-        var oldpc = Emulator.regs[9];
-        Emulator.Step();
-        Emulator.Status();
-        if( oldpc == Emulator.regs[9] )
-        {
-          Console.Log("PC unchanged last step; pausing emulation");
-          Emulator.paused = 1;
-        }
-      }
+      setTimeout( "Emulator.Trace()", 0 ); 
     }
   },
 
-
+  pause:
+  {
+    help: 'pause\nPauses a trace or emulation run.',
+    fn: function() { Emulator.paused = true; }
+  },
+  
   asm:
   {
     help: 'asm\nSwitch to assembly entry mode.',
     fn: function()
     {
-      Console.BeginEdit( Assembler.Assemble );      
+      Console.BeginEdit( function(_text) 
+      { 
+        Assembler.Assemble(_text);
+        Assembler.Patch();
+      } );      
       Console.inputArea.value = Assembler.Program;
     }
   },
