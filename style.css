@@ -1,0 +1,47 @@
+body
+{
+  text-align: center;
+}
+
+.emulation
+{
+  text-align: center;
+}
+
+.divide
+{
+  width: 70%;
+  margin-top: 2em;  
+}
+
+.control
+{
+  text-align: center;
+  margin-top: 2em;
+}
+
+#intext
+{
+  font-family: monospace;
+}
+
+.charmap
+{
+  display: none;
+}
+
+.editor button
+{
+  margin-top: 0.5em;
+}
+
+.editor #ok
+{
+  padding-left: 2em;
+  padding-right: 2em;
+}
+
+.editor #cancel
+{
+  margin-left: 2em;
+}

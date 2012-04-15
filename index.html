@@ -1,0 +1,23 @@
+<html><head>
+<link type="text/css" rel="stylesheet" href="style.css" />
+<script language="javascript" src="jquery.js"></script>
+<script language="javascript" src="parser.js"></script>
+<script language="javascript" src="emulator.js"></script>
+</head><body onload="Console.Boot()">
+
+<div class="emulation">
+  <canvas id="screen" width="512" height="384" />  
+  <canvas id="charmap" width="512" height="8" />  
+</div>
+
+<hr class="divide">
+<div class="control">
+  <textarea id="log" rows=15 cols=132 disabled="true"></textarea>
+  <textarea id="intext" rows=1 cols=132></textarea>
+  <div class="editor">
+    <button type="button" id="ok" onClick="Console.EditOK()">OK</button>
+    <button type="button" id="cancel" onClick="Console.EditCancel()">Cancel</button>
+  </div>
+</div>
+
+</body></html>
