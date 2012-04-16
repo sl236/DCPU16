@@ -103,7 +103,7 @@ Assembler.Grammar =
             })( _m[0], _m[1] );
           }
         ],
-      directive: ["dat | origin | ret"],
+      directive: ["dat | origin | ret | brk"],
       
       basicopname: ["/set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb/ /\\s*/", 
             function(_m) { return _m[0]; }],
@@ -115,6 +115,7 @@ Assembler.Grammar =
       dataunit: ["dataliteral | quotedstring"],
       
       ret: ["'ret'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
+      brk: ["'brk'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
       
       dataliteral: ["expression",
                 function(_m){ CountAssembledWords(1); return (function(expr){return function() { EmitWord(eval(expr)); }})(_m[0][0]); }
@@ -338,7 +339,7 @@ Assembler.Patch = function()
     var line = (origin & 0xFFF0);
     while( line < (origin + block.length) )
     {
-        Emulator.Dump([line.toString(16)]);
+        Emulator.Dump([line]);
         line += 0x10;        
     }
   }

@@ -142,6 +142,11 @@
                         Emulator.regs[9] = aval;
                         break;
 
+                    case 0x3F: // (nonstandard) BRK
+                        Console.Log('*** BRK encountered at ' + (Emulator.regs[9] - 1) + '; emulation paused.');
+                        Emulator.paused = true;
+                        break;
+
                     default:
                         Console.Log('*** reserved instruction encountered at ' + (Emulator.regs[9] - 1) + '; emulation paused.');
                         Emulator.paused = true;
@@ -350,8 +355,8 @@
     {
         var addr = _arg.shift();
         var count = _arg.shift();
-        addr = (addr == undefined) ? 0 : eval('0x' + addr) & 0xFFF0;
-        count = (count == undefined) ? 1 : eval('0x' + count);
+        addr = (addr == undefined) ? 0 : eval(addr) & 0xFFF0;
+        count = (count == undefined) ? 1 : eval(count);
         var result = '';
         for (var i = 0; i < count; i++)
         {
@@ -412,4 +417,4 @@
         }
     }
 
-})();  // (function(){
+})();   // (function(){

@@ -17,6 +17,8 @@
     {
         return function()
         {
+            _oldFn();   // call back original function *first*. Listing dependencies before dependants is more natural, this makes that work.
+
             // screen width is 32 tiles
             // screen height is 12 tiles
             // tile width is 4 emulated pixels
@@ -166,10 +168,59 @@
             {
                 Emulator.WriteMem(0x8180 + 0x40 + i, font[i]);
             }
-
-            _oldFn();
         }
     })(Emulator.onReset);
 
 
-})();                         // (function(){
+
+    // -------------
+    // Keyboard
+    // -------------
+    Emulator.onReset = (function(_oldFn)
+    {
+        return function()
+        {
+            _oldFn();
+
+            var buffer = [];
+            var last = 0x9000;
+
+            var screen = document.getElementById('screen');
+            if (screen)
+            {
+                function handleKeyboard(e)
+                {
+                    if (Emulator.mem[last])
+                    {
+                        buffer.push[e.keyCode];
+                    }
+                    else
+                    {
+                        Emulator.mem[last] = e.keyCode;
+                        last = (last + 1) & 0x900F;
+                    }
+                    return false;
+                }
+                screen.onclick = function()
+                {
+                    Console.SetKeyboardFocus(handleKeyboard);
+                }
+            }
+
+            function onModifyRingBuffer(_addr, _value)
+            {
+                if (buffer.length && (_addr == _last) && (_value == 0))
+                {
+                    Emulator.mem[last] = buffer.shift();
+                    last = (last + 1) & 0x900F;
+                }
+            }
+
+            for (i = 0x9000; i < 0x9010; i++)
+            {
+                Emulator.MemoryHooks[i] = onModifyRingBuffer;
+            }
+        }
+    })(Emulator.onReset);
+
+})();      // (function(){

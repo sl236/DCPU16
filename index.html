@@ -14,8 +14,8 @@
 
 <hr class="divide">
 <div class="control">
-  <textarea id="log" rows=10 cols=132 disabled="true"></textarea>
-  <textarea id="intext" rows=1 cols=132></textarea>
+  <textarea id="log" rows=10 cols=132 readonly="readonly"></textarea>
+  <textarea id="intext" rows=1 cols=132 onClick="Console.SetKeyboardFocus()"></textarea>
   <div class="editor">
     <button type="button" id="ok" onClick="Console.EditOK()">OK</button>
     <button type="button" id="cancel" onClick="Console.EditCancel()">Cancel</button>
