@@ -103,7 +103,7 @@ Assembler.Grammar =
             })( _m[0], _m[1] );
           }
         ],
-      directive: ["dat | origin"],
+      directive: ["dat | origin | ret"],
       
       basicopname: ["/set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb/ /\\s*/", 
             function(_m) { return _m[0]; }],
@@ -113,6 +113,8 @@ Assembler.Grammar =
       data: ["datatuple | dataunit" ],
       datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
       dataunit: ["dataliteral | quotedstring"],
+      
+      ret: ["'ret'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
       
       dataliteral: ["expression",
                 function(_m){ CountAssembledWords(1); return (function(expr){return function() { EmitWord(eval(expr)); }})(_m[0][0]); }
