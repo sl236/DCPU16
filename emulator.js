@@ -5,7 +5,6 @@
 // -----------------------------------------------------------------------
 
 // exposed globals
-
 var Console = 
 {
   logArea: 0,
@@ -27,7 +26,9 @@ var Emulator =
   mem: new Array(0x10000),
   cycles: 0,
   paused: 0,
-  STDIN: []
+  
+  MemoryHooks: [],
+  onReset: function() {}
 };
 
 var Assembler =
@@ -46,6 +47,11 @@ var Assembler =
 Emulator.WriteMem = function(_addr, _value)
 {
   Emulator.mem[_addr] = _value;
+  
+  if( Emulator.MemoryHooks[_addr] )
+  {
+    Emulator.MemoryHooks[_addr](_addr, _value);
+  }
 }
 
 // -----------------------
@@ -114,25 +120,25 @@ function SetVal( _code, _val, _apc, _asp )
     {
       switch( _code )
       {
-        case 0x18: Emulator.mem[(_asp+0xFFFF)&0xFFFF] = _val; return;
-        case 0x19: Emulator.mem[_asp] = _val; return;
-        case 0x1A: Emulator.mem[_asp] = _val; return;
+        case 0x18: Emulator.WriteMem((_asp+0xFFFF)&0xFFFF, _val); return;
+        case 0x19: Emulator.WriteMem(_asp, _val); return;
+        case 0x1A: Emulator.WriteMem(_asp, _val); return;
         case 0x1B: Emulator.regs[8] = _val; return;
         case 0x1C: Emulator.regs[9] = _val; return;
         case 0x1D: Emulator.regs[10] = _val; return;
         case 0x1E: 
-                Emulator.mem[Emulator.mem[_apc]] = _val; 
+                Emulator.WriteMem( Emulator.mem[_apc], _val );
               return;
         case 0x1F: 
-                Emulator.mem[_apc] = _val; 
+                Emulator.WriteMem( _apc, _val ); 
               return;
       }
     }
     if( _code < 0x10 )
     {
-      Emulator.mem[Emulator.regs[_code-0x08]] = _val; return;            
+      Emulator.WriteMem( Emulator.regs[_code-0x08], _val ); return;            
     }
-    Emulator.mem[Emulator.mem[_apc] + Emulator.regs[_code-0x10]] = _val;
+    Emulator.WriteMem(Emulator.mem[_apc] + Emulator.regs[_code-0x10], _val );
   }
 }
 
@@ -166,7 +172,7 @@ Emulator.Step = function()
         case 0x1: // JSR a
             Emulator.cycles+=2;
             Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF)&0xFFFF;
-            Emulator.mem[Emulator.regs[8]] = Emulator.regs[9];
+            Emulator.WriteMem( Emulator.regs[8], Emulator.regs[9] );
             Emulator.regs[9] = aval;
           break;
 
@@ -388,6 +394,7 @@ Emulator.Reset = function()
       Emulator.operandCycles[i] = 0;
     }
   }
+    
   Emulator.regs[11] = 1;
   
   for( var i = 0x10; i <= 0x17; i++ )
@@ -397,7 +404,9 @@ Emulator.Reset = function()
   Emulator.operandCycles[0x1e] = 1;
   Emulator.operandCycles[0x1f] = 1;
   
-  Emulator.STDIN = [];  
+  Emulator.MemoryHooks = [];
+  Emulator.onReset();
+
   Console.Log('Ready.');
 }
 
@@ -705,7 +714,7 @@ Assembler.Patch = function()
     var block = Assembler.BlockAccumulator.blocks[i].block;
     for( var j = 0; j < block.length; j++ )
     {
-      Emulator.mem[j+origin] = block[j];
+      Emulator.WriteMem((j+origin) & 0xFFFF, block[j] );
     }
     var line = (origin & 0xFFF0);
     while( line < (origin + block.length) )
@@ -793,304 +802,6 @@ Assembler.Status = function()
    Console.Log( "Assembler holds " + Assembler.BlockAccumulator.blocks.length + " block" 
         + ((Assembler.BlockAccumulator.blocks.length>1)?"s, totalling ":" ") + size + " words." );
   }
-}
-
-// -------------
-// Debug console
-// -------------
-
-var DebugCommands = 
-{
-  clear:
-  {
-    help: 'clear\nClears the debug log area.',
-    fn: function()
-    {
-      Console.logArea.value = '';
-    }
-  },
-
-  reset:
-  {
-    help: 'reset\nResets the VM to power-on state.',
-    fn: function()
-    {
-      Console.logArea.value = '';
-      Emulator.Reset();
-      Assembler.Patch();
-    }
-  },
-  
-  step:
-  {
-    help: 'step\nSingle-steps the emulation.',
-    fn: function()
-    {
-      var tmp = Emulator.regs[12];
-      Emulator.regs[12] = (Emulator.regs[9]+3)&0xFFFF; // guaranteed not to hit
-      Emulator.Step();
-      Emulator.regs[12] = tmp;
-      Emulator.Status();
-    }
-  },
-
-  bp:
-  {
-    help: 'bp addr\nSets breakpoint to addr.',
-    fn: function( _args )
-    {
-      if( _args.length )
-      {
-        var addr = eval('0x'+_args.shift());
-        Emulator.regs[12] = addr;
-        Console.Log("Breakpoint set to " + H16(Emulator.regs[12]));
-      }
-    }
-  },
-
-  trace:
-  {
-    help: 'trace\nRepeatedly single-steps the emulation.',
-    fn: function() 
-    { 
-      Emulator.paused = 0;
-      setTimeout( "Emulator.Trace()", 0 ); 
-    }
-  },
-
-  pause:
-  {
-    help: 'pause\nPauses a trace or emulation run.',
-    fn: function() { Emulator.paused = true; }
-  },
-  
-  asm:
-  {
-    help: 'asm\nSwitch to assembly entry mode.',
-    fn: function()
-    {
-      Console.BeginEdit( function(_text) 
-      { 
-        Assembler.Assemble(_text);
-        Assembler.Patch();
-      } );      
-      Console.inputArea.value = Assembler.Program;
-    }
-  },
-
-  status:
-  {
-    help: 'status\nDisplay current status.',
-    fn: function()
-    {
-      Emulator.Status();
-      Assembler.Status();
-    }
-  },
-
-  dump:
-  {
-    help: 'dump addr [count]\nDump memory in 16-word units starting from unit containing addr.',
-    fn: Emulator.Dump
-  },
-
-  patch:
-  {
-    help: 'patch [addr data [data [data ...]]]\nCopy arbitrary data to memory; no-argument form copies retained assembler data to memory',
-    fn: function(_args)
-    {
-      if( !_args.length )
-      {
-        Assembler.Patch();
-        Emulator.Status();
-        return;
-      }
-      
-      var addr = eval('0x'+_args.shift());
-      var line = (_addr & 0xfff0);
-      var data;
-      while( (data = _args.shift()) != undefined )
-      {
-        Emulator.mem[addr++] = eval('0x' + data);
-      }
-      while( line < _addr )
-      {
-        Emulator.Dump([line]);
-        line += 0x10;        
-      }
-    }
-  },
-  
-  help:
-  {
-    help: 'help [command]\nDisplays information about a command or the set of available commands.',
-    fn: function(_args)
-    {
-      if( _args && _args.length && DebugCommands[_args[0]] )
-      {
-          Console.Log(DebugCommands[_args[0]].help ? DebugCommands[_args[0]].help : _args[0]+': no help available');
-      }
-      else
-      {
-          var s = ['Known commands: '];
-          for( var i in DebugCommands )
-          {
-            s.push(i);
-          }
-          Console.Log(s);
-      }      
-    }
-  }
-}
-
-function DebugCommand( _cmds )
-{
-  if( _cmds && _cmds.length )
-  {
-    var cmd = _cmds.shift();
-    if( DebugCommands[cmd] )
-    {
-      DebugCommands[cmd].fn(_cmds);
-    }
-    else
-    {
-      Console.Log( 'Unknown command: ' + cmd );
-      if( DebugCommands.help ) { DebugCommands.help.fn(); }
-    }
-  }
-}
-
-Console.DebugCommand = function()
-{
-  var cmd = Console.inputArea.value.split(' ');
-  Console.inputArea.value = '';
-  DebugCommand( cmd );
-  return false;
-}
-
-Console.BeginEdit = function( _callback )
-{
-    Console.EditCB = _callback;
-    $('.editor').show();
-    Console.inputArea.value = '';
-    Console.inputArea.rows = 20;
-}
-
-Console.EditOK = function()
-{
-  if( !Console.EditCB( Console.inputArea.value ) )
-  {
-    $('.editor').hide();
-    Console.inputArea.value = '';
-    Console.inputArea.rows = 1;
-    Console.EditCB = undefined;
-  }
-}
-
-Console.EditCancel = function()
-{
-  $('.editor').hide();
-  Console.inputArea.value = '';
-  Console.inputArea.rows = 1;  
-  Console.EditCB = undefined;
-}
-
-Console.Log = function(_text)
-{
-  if( typeof(_text) === 'string' )
-  {
-    Console.logArea.value += _text + "\n";
-  }
-  else
-  {
-    var s = '';
-    for( var i = 0; i < _text.length; i++ )
-    {
-      if( (s.length + _text[i].length) > 130 )
-      {
-        Console.logArea.value += s + '\n';
-        s = '';
-      }
-      s += _text[i] + ' ';
-    }
-    Console.logArea.value += s + '\n';
-  }
-}
-
-function TerminalControl(_elt) 
-{
-    this.layer = null;
-    this.textbox = _elt;
-    this.TextHistory = [];
-    this.currHistory = 0;
-    this.currText = '';
-    var oThis = this;
-    _elt.onkeydown = function (e) 
-    {
-        return oThis.handleKeyDown(e?e:window.event);
-    }
-}
-
-TerminalControl.prototype.handleKeyDown = function (e) 
-{
-  if( !Console.EditCB )
-  {
-    switch(e.keyCode) 
-    {
-        case 38:
-                        if( this.currHistory > 0 )
-                        {
-                                if( this.currHistory == this.TextHistory.length )
-                                {
-                                        this.currText = this.textbox.value;
-                                }
-                                this.currHistory--;     
-                                this.textbox.value = this.TextHistory[this.currHistory];
-                        }
-            return false;
-        case 40:
-                        if( this.currHistory < this.TextHistory.length )
-                        {
-                                this.currHistory++;     
-                                if( this.currHistory < this.TextHistory.length )
-                                {
-                                        this.textbox.value = this.TextHistory[this.currHistory];
-                                }
-                                else
-                                {
-                                        this.textbox.value = this.currText;
-                                }
-                        }
-            return false;
-         case 13:
-                        {
-                                this.TextHistory.push(this.textbox.value);
-                                this.currHistory = this.TextHistory.length;
-                                setTimeout("Console.DebugCommand()",0);
-                        }
-            return false;
-     }
-   }
-   return true;
-}
-
-
-Console.Boot = function()
-{
-  $('.editor').hide();
-  Console.logArea = document.getElementById('log');
-  Console.inputArea = document.getElementById('intext');
-  Emulator.screen = document.getElementById('screen');
-  Emulator.charMap = document.getElementById('charmap');
-  
-  Emulator.screenDC = Emulator.screen.getContext('2d');
-  Emulator.charMapDC = Emulator.charMap.getContext('2d');
-  Emulator.screenDC.fillStyle = '#000000';
-  Emulator.screenDC.fillRect( 0, 0, 512, 384 );
-  
-  Emulator.Reset();
-    
-  new TerminalControl(document.getElementById('intext'));
 }
 
 })(); // end of hidden innards
