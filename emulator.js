@@ -299,7 +299,7 @@
         {
             stat += Emulator.regNames[i] + ':' + Console.H16(Emulator.regs[i]) + '  ';
         }
-        stat += '\n' + Emulator.Disassemble(Emulator.regs[9])[0];
+        stat += '   ' + Emulator.cycles + ' cycles\n' + Emulator.Disassemble(Emulator.regs[9])[0];
         if (!Emulator.regs[11])
         {
             stat += ' ; ( will skip ) ';
