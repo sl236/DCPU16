@@ -212,7 +212,7 @@ Assembler.Grammar =
       spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x1a; } }],
       push: ["/(push\\b|\\[;sp[+][+]\\])\\s*/",            function(_m) { return function() { return 0x1a; } }],
       pop: ["/(pop\\b|\\[--;sp\\])\\s*/",              function(_m) { return function() { return 0x18; } }],
-      peek: ["/(peek\\b|\\[;sp\\])\\s*/",            function(_m) { return function() { return 0x1b; } } ],
+      peek: ["/(peek\\b|\\[;sp\\])\\s*/",            function(_m) { return function() { return 0x19; } } ],
 
       literal: ["expression",     function(_m) 
             { 
