@@ -188,15 +188,19 @@
             var screen = document.getElementById('screen');
             if (screen)
             {
+                var keymap = {0x0d: 0x0a, 0x25: 0x01, 0x27: 0x02, 0x26: 0x03, 0x28: 0x04};
+                
                 function handleKeyboard(e)
                 {
+                    var code = (keymap[e.keyCode]!=undefined)
+                                   ? keymap[e.keyCode] : e.keyCode;                
                     if (Emulator.mem[last])
                     {
-                        buffer.push[e.keyCode];
+                        buffer.push[code];
                     }
                     else
                     {
-                        Emulator.mem[last] = e.keyCode;
+                        Emulator.mem[last] = code;
                         last = (last + 1) & 0x900F;
                     }
                     return false;

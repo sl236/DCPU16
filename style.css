@@ -20,6 +20,12 @@ body
   margin-top: 0.5em;
 }
 
+.control .label
+{
+  font-family: monospace;
+  float: left;
+}
+
 #intext
 {
   font-family: monospace;
@@ -44,4 +50,11 @@ body
 .editor #cancel
 {
   margin-left: 2em;
+}
+
+.linkback
+{
+  margin-top: 0.5em;
+  margin-right: 4em;
+  font-size: small;
 }

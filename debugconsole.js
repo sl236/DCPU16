@@ -213,6 +213,7 @@
     Console.EditCancel = function()
     {
         $('.editor').hide();
+        Assembler.Program = Console.inputArea.value;
         Console.inputArea.value = '';
         Console.inputArea.rows = 1;
         Console.EditCB = undefined;
@@ -296,6 +297,8 @@
     // Keyboard dispatch
     // -------------    
 
+    Console.prompt = 'Emulator command area. Type help for help.';
+    
     Console.HandleKeyDown = function(e)
     {
         if (!Console.EditCB)
@@ -314,6 +317,7 @@
         }
         else
         {
+            if( Console.inputArea.value == Console.prompt ) { Console.inputArea.value = ''; }
             KeyboardFocus = Console.HandleKeyDown;
         }
     }
@@ -352,6 +356,7 @@
         $('.editor').hide();
         Console.logArea = document.getElementById('log');
         Console.inputArea = document.getElementById('intext');
+        Console.inputArea.value = Console.prompt;
 
         Emulator.Reset();
 
