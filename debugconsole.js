@@ -3,7 +3,7 @@
 // http://www.toothycat.net/wiki/wiki.pl?MoonShadow/DCPU16
 // Distributed under the just do what you like license (http://sam.zoy.org/wtfpl/COPYING)
 // -----------------------------------------------------------------------
-// Debug console and bootstrap function
+// Debug console, utility and bootstrap functions
 
 (function(){
 
@@ -290,6 +290,32 @@ TerminalControl.prototype.handleKeyDown = function (e)
    }
    return true;
 }
+
+// -------------
+// Utility
+// -------------
+// -----------------------
+Console.H8 = function(_i)
+{
+    var h = _i.toString(16);
+    while (h.length < 2)
+    {
+        h = '0' + h;
+    }
+    return h;
+}
+
+// -----------------------
+Console.H16 = function(_i)
+{
+    var h = _i.toString(16);
+    while (h.length < 4)
+    {
+        h = '0' + h;
+    }
+    return h;
+}
+
 
 // -------------
 // Bootstrapping
