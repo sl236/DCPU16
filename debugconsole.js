@@ -160,6 +160,7 @@
               {
                   s.push(i);
               }
+              s.push('use   help commandname   for help with a specific command');
               Console.Log(s);
           }
       }
