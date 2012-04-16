@@ -210,9 +210,9 @@ Assembler.Grammar =
       reg_o: ["/;o\\s*/",             function(_m) { return function() { return 0x1d; } }],
       spinc: ["/\\[\\s*;sp\\s*[+][+]\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } }],
       spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x1a; } }],
-      push: ["/(push|\\[;sp[+][+]\\])\\s*/",            function(_m) { return function() { return 0x1a; } }],
-      pop: ["/(pop|\\[--;sp\\])\\s*/",              function(_m) { return function() { return 0x18; } }],
-      peek: ["/(peek|\\[;sp\\])\\s*/",            function(_m) { return function() { return 0x1b; } } ],
+      push: ["/(push\\b|\\[;sp[+][+]\\])\\s*/",            function(_m) { return function() { return 0x1a; } }],
+      pop: ["/(pop\\b|\\[--;sp\\])\\s*/",              function(_m) { return function() { return 0x18; } }],
+      peek: ["/(peek\\b|\\[;sp\\])\\s*/",            function(_m) { return function() { return 0x1b; } } ],
 
       literal: ["expression",     function(_m) 
             { 
