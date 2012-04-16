@@ -359,7 +359,7 @@ Assembler.Assemble = function(_text)
   for( var i = 0; i < lines.length; i++ )
   {
     Assembler.CurrLine = i+1;
-    var line = lines[i].toLowerCase().replace(/;.+$/g, '' ).replace(/[\r\n]/g, ''); // lower case, strip comments, strip newline at end
+    var line = lines[i].toLowerCase().replace(/;.*$/g, '' ).replace(/[\r\n]/g, ''); // lower case, strip comments, strip newline at end
     line = line.replace(/\b([abcxyzij]|pc|sp|o)\b/g, ';$&'); // escape register names so they can be differentiated from labels
     var r = [];
     var err = '';
