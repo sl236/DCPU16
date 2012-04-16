@@ -256,6 +256,7 @@
             {
                 Emulator.MemoryHooks[i] = onModifyRingBuffer;
             }
+            Emulator.MemoryHooks[0x9010] = onModifyKeyPtr;
         }
     })(Emulator.onReset);
 
