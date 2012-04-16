@@ -55,7 +55,7 @@ var DebugCommands =
       {
         var addr = eval('0x'+_args.shift());
         Emulator.regs[12] = addr;
-        Console.Log("Breakpoint set to " + H16(Emulator.regs[12]));
+        Console.Log("Breakpoint set to " + Console.H16(Emulator.regs[12]));
       }
     }
   },

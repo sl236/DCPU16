@@ -80,9 +80,10 @@ function EmitExtendedOp( _name, _acode )
 
 Assembler.Grammar =
     {
-      START: ["labelledline | line | emptyline"],
+      START: ["labelledline | justlabels | line | emptyline"],
       emptyline: ["/\\s*/ $"],
-      labelledline: ["/\\s*/ labels /\\s*/ line",   function(_m) { return _m[3]; }],
+      labelledline: ["justlabels line",   function(_m) { return _m[1]; }],
+      justlabels: [ "/\\s*/ labels /\\s*/" ],
       line: ["/\\s*/ statement /\\s*/ $",           function(_m) { return _m[1]; }],
       statement: ["basicop | extendedop | directive"],
 
@@ -111,9 +112,60 @@ Assembler.Grammar =
       dat: ["'dat' /\\s*/ data",       function(_m) { return _m[2]; } ],
       data: ["datatuple | dataunit" ],
       datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
-      dataunit: ["literal",
-                function(_m){ CountAssembledWords(1); return (function(fn){return function() { EmitWord(fn()); }})(_m); }
+      dataunit: ["dataliteral | quotedstring"],
+      
+      dataliteral: ["literal",
+                function(_m){ CountAssembledWords(1); return (function(fn){return function() { EmitWord(fn()); }})(_m[0]); }
             ],
+            
+      quotedstring: ["singlequotedstring | doublequotedstring"],
+      singlequotedstring: ["/'/ quotedstringdata /'\\s*/", function(_m) { return _m[1]; } ],
+      doublequotedstring: ['/"/ quotedstringdata /"\\s*/', function(_m) { return _m[1]; } ],
+      quotedstringdata: ["quotedstringtuple | quotedstringunit"],
+      quotedstringtuple: ["quotedstringunit quotedstringdata", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[1]); } ],
+      quotedstringunit: ["stringchar | escape"],
+      stringchar: ["/[^\"'\\\\]/", function(_m){ CountAssembledWords(1); return (function(_code){return function() { EmitWord(_code); }})(_m[0].charCodeAt(0)); } ],
+      escape: ["'\\\\' escapecode", function(_m) { return _m[1]; } ],
+      escapecode: ["numericescape | onecharescape" ],
+      onecharescape: ["/./", 
+        function(_m)
+        { 
+            CountAssembledWords(1);
+            var code = _m[0].charCodeAt(0);
+            switch( _m[0] ) // http://msdn.microsoft.com/en-us/library/h21280bw%28v=vs.80%29.aspx
+            {
+                case 'a':
+                        code = 7;
+                    break;            
+                case 'b':
+                        code = 8;
+                    break;            
+                case 'f':
+                        code = 12;
+                    break;            
+                case 'n':
+                        code = 10;
+                    break;            
+                case 'r':
+                        code = 13;
+                    break;            
+                case 't':
+                        code = 9;
+                    break;            
+                case 'v':
+                        code = 11;
+                    break;            
+            }
+            return (function(_code)
+            {
+                return function() { EmitWord(_code); }}
+            )(_m[0].charCodeAt(0)); 
+        } 
+      ],
+     
+      numericescape: ["/(([0][0-7][0-7][0-7])|([x][0-9a-f][0-9a-f]([0-9a-f][0-9a-f])?))/", 
+        function(_m){ CountAssembledWords(1); return (function(_code){return function() { EmitWord(_code); }})(eval('0' + _m[0])); } 
+      ],            
       
       origin: [ "/[.]?(org|origin)/ /\\s*/ expression", function(_m)
                 { 
@@ -192,11 +244,25 @@ Assembler.Grammar =
         
       regindirect: ["/\\[\\s*/ /;[abcxyzij]/ /\\s*\\]\\s*/", 
           function(_m) { return (function(id){return function(){return id+0x8;}})('abcxyzij'.indexOf(_m[0].charAt(1))); } ],
-          
-      regindoffset: ["/\\[\\s*/ expression /\\s*\\+\\s*/ /;[abcxyzij]/ /\\s*\\]/",
+      
+      regindoffset: ["regindoffsetleft | regindoffsetright"],
+      regindoffsetleft: ["/\\[\\s*/ expression /\\s*\\+\\s*/ /;[abcxyzij]/ /\\s*\\]/",
           function(_m) { 
             var expr = _m[1][0];
             var id = 'abcxyzij'.indexOf(_m[3].charAt(1));
+            CountAssembledWords(1);
+            return (function(i, e){
+            return function() 
+            { 
+              EmitWord(eval(e));
+              return i + 0x10;
+            }})(id, expr);
+          }
+        ],      
+      regindoffsetright: ["/\\[\\s*/ /;[abcxyzij]/ /\\s*\\+\\s*/ expression /\\s*\\]/",
+          function(_m) { 
+            var expr = _m[3][0];
+            var id = 'abcxyzij'.indexOf(_m[1].charAt(1));
             CountAssembledWords(1);
             return (function(i, e){
             return function() 
@@ -270,7 +336,7 @@ Assembler.Patch = function()
     var line = (origin & 0xFFF0);
     while( line < (origin + block.length) )
     {
-        Emulator.Dump([line]);
+        Emulator.Dump([line.toString(16)]);
         line += 0x10;        
     }
   }
