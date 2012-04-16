@@ -175,7 +175,7 @@
 
     // -------------
     // Keyboard
-    // -------------
+    // -------------    
     Emulator.onReset = (function(_oldFn)
     {
         return function()
@@ -187,20 +187,27 @@
 
             var screen = document.getElementById('screen');
             if (screen)
-            {
-                var keymap = {0x0d: 0x0a, 0x25: 0x01, 0x27: 0x02, 0x26: 0x03, 0x28: 0x04};
-                
+            {                
                 function handleKeyboard(e)
                 {
-                    var code = (keymap[e.keyCode]!=undefined)
-                                   ? keymap[e.keyCode] : e.keyCode;                
+                    var code = Console.Keymap[e.keyCode] ? 
+                            Console.Keymap[e.keyCode] : e.keyCode;                
+                    
                     if (Emulator.mem[last])
                     {
                         buffer.push[code];
+                        if( Console.Options['keylog'] )
+                        {
+                          Console.Log( e.keyCode + " pressed; " + code + " stored in emulator (ringbuffer full). " );
+                        }
                     }
                     else
                     {
                         Emulator.mem[last] = code;
+                        if( Console.Options['keylog'] )
+                        {
+                          Console.Log( e.keyCode + " pressed; " + code + " written to " + last );
+                        }
                         last = (last + 1) & 0x900F;
                     }
                     return false;
@@ -210,12 +217,37 @@
                     Console.SetKeyboardFocus(handleKeyboard);
                 }
             }
+            
+            function onModifyKeyPtr(_addr, _value)
+            {
+              if( Console.Options['keyptr'] )
+              {
+                Emulator.mem[0x9010] = last;
+                for( var i = 1; i < 0xF; i++ )
+                {
+                  if( Emulator.mem[(i+last)&0x900F] )
+                  {
+                    Emulator.mem[0x9010] = (i+last)&0x900F;
+                    return;
+                  }
+                }                
+              }
+            }
 
             function onModifyRingBuffer(_addr, _value)
             {
+                if( Console.Options['keyptr'] && (_addr == Emulator.mem[0x9010] ) ) 
+                { 
+                  Emulator.mem[0x9010] = (Emulator.mem[0x9010]+1)&0x900f; 
+                }
+                
                 if (buffer.length && (_addr == _last) && (_value == 0))
                 {
                     Emulator.mem[last] = buffer.shift();
+                    if( Console.Options['keylog'] )
+                    {
+                      Console.Log("Keycode " + Emulator.mem[last] + " written to " + last + " (old value was read by app)" );
+                    }
                     last = (last + 1) & 0x900F;
                 }
             }

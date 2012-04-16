@@ -8,7 +8,9 @@
 var Console =
 {
     logArea: 0,
-    inputArea: 0
+    inputArea: 0,
+    Keymap: {0x0d: 0x0a, 0x25: 0x01, 0x27: 0x02, 0x26: 0x03, 0x28: 0x04},
+    Options: { keyptr: 1 }
 };
 
 var Emulator =

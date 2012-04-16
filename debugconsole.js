@@ -87,7 +87,7 @@
       fn: function() { Emulator.paused = true; }
   },
 
-    asm:
+  asm:
   {
       help: 'asm\nSwitch to assembly entry mode.',
       fn: function()
@@ -142,6 +142,75 @@
               line += 0x10;
           }
       }
+  },
+  
+  keylog:
+  {
+    help: 'keylog\nToggles keyboard event logging.\n',
+    fn: function()
+    {
+      if( Console.Options['keylog'] )
+      {
+        Console.Options['keylog'] = 0;
+        Console.Log( "Keyboard event logging disabled.\n" );
+      }
+      else
+      {
+        Console.Options['keylog'] = 1;
+        Console.Log( "Keyboard event logging enabled.\n" );
+      }
+    }
+  },
+
+  keypointer:
+  {
+    help: 'keypointer\nToggles 0x10co.de non-spec keyboard ringbuffer pointer at 0x9010\n',
+    fn: function()
+    {
+      if( Console.Options['keyptr'] )
+      {
+        Console.Options['keyptr'] = 0;
+        Console.Log( "0x9010 keyboard ringbuffer pointer disabled.\n" );
+      }
+      else
+      {
+        Console.Options['keyptr'] = 1;
+        Emulator.WriteMem(0x9010, 0x9000);
+        Console.Log( "0x9010 keyboard ringbuffer pointer enabled.\n" );
+      }
+    }
+  },
+  
+  map:
+  {
+    help: 'map [code1 [code2]]\nWhen keycode code1 is received by Javascript, code2 will be sent to the emulated ringbuffer. With no arguments, displays current mappings.\nUse keylog to discover codes sent by browser.\n',
+    fn: function( _args )
+    {
+      if( _args.length )
+      { 
+        if( _args[1] && eval(_args[1]) )
+        {
+          Console.Keymap[eval(_args[0])] = eval(_args[1]);
+          Console.Log( eval(_args[0]) + " mapped to " + eval(_args[1]) );
+        }
+        else
+        {
+          Console.Keymap[eval(_args[0])] = undefined;
+          Console.Log( eval(_args[0]) + " mapping reset." );
+        }
+      }
+      else
+      {
+        Console.Log( "Keyboard mappings: " );
+        for( var i in Console.Keymap )
+        {
+          if( Console.Keymap[i] )
+          {
+            Console.Log( i + ' -> ' + Console.Keymap[i] );
+          }
+        }
+      }      
+    }
   },
 
   help:

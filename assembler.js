@@ -87,12 +87,12 @@ Assembler.Grammar =
       line: ["/\\s*/ statement /\\s*/ $",           function(_m) { return _m[1]; }],
       statement: ["basicop | extendedop | directive"],
 
-      basicop: ["basicopname operand /\\s*,\\s*/ operand", function(_m) 
+      basicop: ["basicopname /(,\\s*)?/ operand /\\s*,?\\s*/ operand", function(_m) 
           {
             CountAssembledWords(1); 
             return (function(n, a, b){
                return function() { BeginOp(); EmitBasicOp( n, a(), b() ); }
-              })( _m[0], _m[1], _m[3] );
+              })( _m[0], _m[2], _m[4] );
           }
         ],
       extendedop: ["extendedopname operand", function(_m) 
@@ -107,7 +107,7 @@ Assembler.Grammar =
       
       basicopname: ["/set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb/ /\\s*/", 
             function(_m) { return _m[0]; }],
-      extendedopname: ["/jsr/ /\\s*/", function(_m) { return _m[0]; }],
+      extendedopname: ["/jsr/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; }],
       
       dat: ["'dat' /\\s*/ data",       function(_m) { return _m[2]; } ],
       data: ["datatuple | dataunit" ],
