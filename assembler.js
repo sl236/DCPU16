@@ -114,8 +114,8 @@ Assembler.Grammar =
       datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
       dataunit: ["dataliteral | quotedstring"],
       
-      dataliteral: ["literal",
-                function(_m){ CountAssembledWords(1); return (function(fn){return function() { EmitWord(fn()); }})(_m[0]); }
+      dataliteral: ["expression",
+                function(_m){ CountAssembledWords(1); return (function(expr){return function() { EmitWord(eval(expr)); }})(_m[0][0]); }
             ],
             
       quotedstring: ["singlequotedstring | doublequotedstring"],
@@ -206,9 +206,9 @@ Assembler.Grammar =
       reg_o: ["/;o\\s*/",             function(_m) { return function() { return 0x1d; } }],
       spinc: ["/\\[\\s*;sp\\s*[+][+]\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } }],
       spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x1a; } }],
-      push: ["/push\\s*/",            function(_m) { return function() { return 0x1a; } }],
-      pop: ["/pop\\s*/",              function(_m) { return function() { return 0x18; } }],
-      peek: ["/peek\\s*/",            function(_m) { return function() { return 0x1b; } } ],
+      push: ["/(push|\\[;sp[+][+]\\])\\s*/",            function(_m) { return function() { return 0x1a; } }],
+      pop: ["/(pop|\\[--;sp\\])\\s*/",              function(_m) { return function() { return 0x18; } }],
+      peek: ["/(peek|\\[;sp\\])\\s*/",            function(_m) { return function() { return 0x1b; } } ],
 
       literal: ["expression",     function(_m) 
             { 
@@ -243,7 +243,7 @@ Assembler.Grammar =
         ],
         
       regindirect: ["/\\[\\s*/ /;[abcxyzij]/ /\\s*\\]\\s*/", 
-          function(_m) { return (function(id){return function(){return id+0x8;}})('abcxyzij'.indexOf(_m[0].charAt(1))); } ],
+          function(_m) { return (function(id){return function(){return id+0x8;}})('abcxyzij'.indexOf(_m[1].charAt(1))); } ],
       
       regindoffset: ["regindoffsetleft | regindoffsetright"],
       regindoffsetleft: ["/\\[\\s*/ expression /\\s*\\+\\s*/ /;[abcxyzij]/ /\\s*\\]/",

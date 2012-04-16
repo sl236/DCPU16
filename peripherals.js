@@ -111,6 +111,15 @@
 
             function updateCharMap(_addr, _value)
             {
+                var ch = ((_addr - 0x8180) >> 1) & 0x7F;
+
+                for (var i = 0x8000; i < 0x8180; i++)
+                {
+                    if ((Emulator.mem[i] & 0x7F) == ch)
+                    {
+                        updateScreen(i, Emulator.mem[i]);
+                    }
+                }
             }
 
             function updateBorder(_addr, _value)
@@ -163,4 +172,4 @@
     })(Emulator.onReset);
 
 
-})();                        // (function(){
+})();                         // (function(){

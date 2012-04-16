@@ -69,6 +69,16 @@ var DebugCommands =
       setTimeout( "Emulator.Trace()", 0 ); 
     }
   },
+  
+  run:
+  {
+      help: 'run\nContinues the emulation until an error condition is encountered or emulation becomes paused due to a debug console command.',
+      fn: function()
+      {
+          Emulator.paused = 0;
+          setTimeout("Emulator.Run()", 0);
+      }
+  },
 
   pause:
   {
@@ -227,6 +237,7 @@ Console.Log = function(_text)
     }
     Console.logArea.value += s + '\n';
   }
+  Console.logArea.scrollTop = Console.logArea.scrollHeight;
 }
 
 
