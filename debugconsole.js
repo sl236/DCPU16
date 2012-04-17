@@ -180,6 +180,24 @@
       }
     }
   },
+
+  keyringbuffer:
+  {
+      help: 'keyringbuffer\nToggles between full ringbuffer emulation and just writing character data to 0x9000 only\n',
+      fn: function()
+      {
+          if (Console.Options.keyringbuffer)
+          {
+              Console.Options.keyringbuffer = 0;
+              Console.Log("Just writing character data to 0x9000 (full ringbuffer emulation disabled).\n");
+          }
+          else
+          {
+              Console.Options.keyringbuffer = 1;
+              Console.Log("Keyboard ringbuffer emulation enabled at 0x9000... 0x900F.\n");
+          }
+      }
+  },
   
   map:
   {
@@ -188,10 +206,10 @@
     {
       if( _args.length )
       { 
-        if( _args[1] && eval(_args[1]) )
+        if( _args[1] != undefined )
         {
           Console.Keymap[eval(_args[0])] = eval(_args[1]);
-          Console.Log( eval(_args[0]) + " mapped to " + eval(_args[1]) );
+          Console.Log( eval(_args[0]) + " mapped to " + (eval(_args[1])?eval(_args[1]):"[suppress]") );
         }
         else
         {
@@ -204,9 +222,9 @@
         Console.Log( "Keyboard mappings: " );
         for( var i in Console.Keymap )
         {
-          if( Console.Keymap[i] )
+          if( Console.Keymap[i] != undefined )
           {
-            Console.Log( i + ' -> ' + Console.Keymap[i] );
+            Console.Log( i + ' -> ' + (Console.Keymap[i]?Console.Keymap[i]:"[suppress]") );
           }
         }
       }      

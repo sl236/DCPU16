@@ -203,32 +203,61 @@
             var buffer = [];
             var last = 0x9000;
 
+            var shiftmap = [];
+            var shifted = '¬!"£$%^&*()_+QWERTYUIOP{}ASDFGHJKL:@~|ZXCVBNM<>/';
+            var unshifted = '`1234567890-=qwertyuiop[]asdfghjkl;\'#\\zxcvbnm,./';
+
+
             var screen = document.getElementById('screen');
             if (screen)
             {
                 function handleKeyboard(e)
                 {
-                    var code = Console.Keymap[e.keyCode] ?
-                            Console.Keymap[e.keyCode] : e.keyCode;
+                    var scancode = e.keyCode;
+                    var charcode = scancode;
+                    if ((scancode >= 16) && (scancode <= 18))
+                    {
+                        return;
+                    }
+
+                    if (e.ctrlKey && ((scancode | 0x20) >= 0x61) && ((scancode | 0x20) <= 0x7a) )
+                    {
+                        scancode = (scancode | 0x20) - 0x61;
+                    }
+
+                    var idx = (e.shiftKey ? unshifted : shifted).indexOf(String.fromCharCode(scancode));
+                    if (idx > -1)
+                    {
+                        charcode = (e.shiftKey ? shifted : unshifted).charCodeAt(idx);
+                    }
+
+                    var code = (Console.Keymap[charcode] != undefined) ?
+                            Console.Keymap[charcode] : charcode;
 
                     if (Emulator.mem[last])
                     {
-                        buffer.push[code];
+                        if (code)
+                        {
+                            buffer.push[code];
+                        }
                         if (Console.Options['keylog'])
                         {
-                            Console.Log(e.keyCode + " pressed; " + code + " stored in emulator (ringbuffer full). ");
+                            Console.Log(charcode + " pressed; " + (code ? code : "nothing") + " stored in emulator (ringbuffer full). ");
                         }
                     }
                     else
                     {
-                        Emulator.mem[last] = code;
+                        if (code)
+                        {
+                            Emulator.mem[last] = code;
+                        }
                         if (Console.Options['keylog'])
                         {
-                            Console.Log(e.keyCode + " pressed; " + code + " written to " + last);
+                            Console.Log(charcode + " pressed; " + (code ? code : "nothing") + " written to " + last);
                         }
-                        last = (last + 1) & 0x900F;
+                        last = Console.Options.keyringbuffer ? (last + 1) & 0x900F : 0x9000;
                     }
-                    return false;
+                    return !code;
                 }
                 screen.onclick = function()
                 {
@@ -266,7 +295,7 @@
                     {
                         Console.Log("Keycode " + Emulator.mem[last] + " written to " + last + " (old value was read by app)");
                     }
-                    last = (last + 1) & 0x900F;
+                    last = Console.Options.keyringbuffer ? (last + 1) & 0x900F : 0x9000;
                 }
             }
 
@@ -278,4 +307,4 @@
         }
     })(Emulator.onReset);
 
-})();    // (function(){
+})();         // (function(){
