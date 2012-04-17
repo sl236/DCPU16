@@ -182,20 +182,10 @@
                     0x6c10, 0x6c00, 0x5c50, 0x7c00, 0x6454, 0x4c00, 0x0877, 0x4100, 0x007f, 0x0000, 0x4177, 0x0800, 0x0000, 0x0000
                 ];
 
-            var start = (new Date().getTime());
             for (var i = 0; i < font.length; i++)
             {
                 Emulator.WriteMem(0x8180 + 0x40 + i, font[i]);
             }
-
-            for (var iter = 0; iter < 200; iter++)
-            {
-                for (var i = 0; i < 127; i++)
-                {
-                    Emulator.WriteMem(i + 0x8000, i + 0x2000);
-                }
-            }
-            Console.Log((new Date().getTime()) - start + "ms for 200 updates");
         }
     })(Emulator.onReset);
 
