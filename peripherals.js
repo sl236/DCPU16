@@ -64,12 +64,9 @@
                     g += 0x55;
                     b += 0x55;
                 }
-                else
+                else if (i==6)
                 {
-                    if (r && g)
-                    {
-                        g = 0xFF;
-                    }
+                    b += 0x55;
                 }
                 rgb[i] = [r, g, b];
                 rgbstyle[i] = 'rgb(' + r + ',' + g + ',' + b + ')';
