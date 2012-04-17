@@ -30,7 +30,7 @@
 
             // ------
 
-            $('#emulation').html('<canvas id="screen" width="640" height="512" />');
+            $('#emulation').html('<canvas class="crisp" id="screen" width="640" height="512" />');
             var screen = document.getElementById('screen');
             var screenDC = screen.getContext('2d');
 
@@ -39,7 +39,7 @@
             var glyphCache = [];
             var tmpData = [];
 
-            for (var i = 0; i < 127; i++)
+            for (var i = 0; i < 128; i++)
             {
                 glyphCache[i] = [];
                 for (var j = 0; j < 16; j++)
@@ -47,6 +47,7 @@
                     var vch = document.createElement('canvas');
                     vch.setAttribute('width', 4);
                     vch.setAttribute('height', 8);
+                    vch.setAttribute('class', 'crisp');
                     var vchDC = vch.getContext('2d');
                     glyphCache[i][j] = { ch: vch, chDC: vchDC, ok: 0, td: null };
                 }
@@ -76,10 +77,12 @@
 
             screenDC.scale(4, 4);
             screenDC.translate(16, 16);
+            screenDC.mozImageSmoothingEnabled = false;
             screenDC.save();
             screenDC.fillStyle = 'rgb(0,0,0)';
             screenDC.fillRect(-16, -16, 128 + 16 * 2, 96 + 16 * 2);
             screenDC.restore();
+            var screenDClastFS = 0;
 
             function getGlyph(_idx, _fgColour)
             {
@@ -120,8 +123,13 @@
             {
                 var x = ((_addr - 0x8000) & 31) << 2;
                 var y = ((_addr - 0x8000) >>> 5) << 3;
+                var bg = (_value >>> 0x8) & 0xF;
 
-                screenDC.fillStyle = rgbstyle[(_value >>> 0x8) & 0xF];
+                if (screenDClastFS != bg)
+                {
+                    screenDClastFS = bg;
+                    screenDC.fillStyle = rgbstyle[bg];
+                }
                 screenDC.fillRect(x, y, 4, 8);
                 screenDC.drawImage(getGlyph(_value & 0x7F, ((_value >>> 0xC) & 0xF)), x, y);
             }
@@ -146,7 +154,12 @@
 
             function updateBorder(_addr, _value)
             {
-                screenDC.fillStyle = rgbstyle[_value & 0xF];
+                var bg = _value & 0xF;
+                if (screenDClastFS != bg)
+                {
+                    screenDClastFS = bg;
+                    screenDC.fillStyle = rgbstyle[bg];
+                }
                 screenDC.fillRect(-16, -16, 128 + 16 * 2, 16);
                 screenDC.fillRect(-16, 0, 16, 96);
                 screenDC.fillRect(128, 0, 16, 96);
@@ -182,9 +195,25 @@
                     0x6c10, 0x6c00, 0x5c50, 0x7c00, 0x6454, 0x4c00, 0x0877, 0x4100, 0x007f, 0x0000, 0x4177, 0x0800, 0x0000, 0x0000
                 ];
 
+            var start = (new Date()).getTime();
+
             for (var i = 0; i < font.length; i++)
             {
                 Emulator.WriteMem(0x8180 + 0x40 + i, font[i]);
+            }
+
+            // profiling
+            if (0)
+            {
+
+                for (var iter = 0; iter < 200; iter++)
+                {
+                    for (var i = 0; i < 128; i++)
+                    {
+                        Emulator.WriteMem(0x8000 + i, 0x8000 + i);
+                    }
+                }
+                Console.Log(((new Date()).getTime() - start) + "ms for 200 frames.");
             }
         }
     })(Emulator.onReset);
@@ -220,7 +249,7 @@
                         return;
                     }
 
-                    if (e.ctrlKey && ((scancode | 0x20) >= 0x61) && ((scancode | 0x20) <= 0x7a) )
+                    if (e.ctrlKey && ((scancode | 0x20) >= 0x61) && ((scancode | 0x20) <= 0x7a))
                     {
                         scancode = (scancode | 0x20) - 0x61;
                     }
@@ -307,4 +336,4 @@
         }
     })(Emulator.onReset);
 
-})();         // (function(){
+})();                     // (function(){
