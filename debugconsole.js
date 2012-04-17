@@ -54,7 +54,7 @@
       {
           if (_args.length)
           {
-              var addr = eval('0x' + _args.shift());
+              var addr = parseInt(_args.shift(), 16);
               Emulator.regs[12] = addr;
               Console.Log("Breakpoint set to " + Console.H16(Emulator.regs[12]));
           }
@@ -87,21 +87,37 @@
       fn: function() { Emulator.paused = true; }
   },
 
-  asm:
+    asm:
   {
-      help: 'asm\nSwitch to assembly entry mode.',
-      fn: function()
+      help: 'asm [url]\nSwitch to assembly entry mode, optionally loading source from supplied URL (note browser cross-site scripting policies).',
+      fn: function(_args)
       {
-          Console.BeginEdit(function(_text)
+          function go(_data)
           {
-              Assembler.Assemble(_text);
-              Assembler.Patch();
-          });
-          Console.inputArea.value = Assembler.Program;
+              Console.BeginEdit(function(_text)
+              {
+                  Assembler.Assemble(_text);
+                  Assembler.Patch();
+              });
+              Console.inputArea.value = _data ? _data : Assembler.Program;
+          }
+
+          if (_args.length)
+          {
+              $.ajax({
+                  url: _args.join(' '),
+                  dataType: 'text',
+                  success: function(data) { go(data); }
+              });
+          }
+          else
+          {
+              go();
+          }
       }
   },
 
-  status:
+    status:
   {
       help: 'status\nDisplay current status.',
       fn: function()
@@ -111,13 +127,13 @@
       }
   },
 
-  dump:
+    dump:
   {
       help: 'dump addr [count]\nDump memory in 16-word units starting from unit containing addr.',
       fn: Emulator.Dump
   },
 
-  patch:
+    patch:
   {
       help: 'patch [addr data [data [data ...]]]\nCopy arbitrary data to memory; no-argument form copies retained assembler data to memory',
       fn: function(_args)
@@ -129,12 +145,12 @@
               return;
           }
 
-          var addr = eval('0x' + _args.shift());
+          var addr = parseInt(_args.shift(), 16);
           var line = (_addr & 0xfff0);
           var data;
           while ((data = _args.shift()) != undefined)
           {
-              Emulator.WriteMem(addr++, eval('0x' + data));
+              Emulator.WriteMem(addr++, parseInt(data, 16));
           }
           while (line < _addr)
           {
@@ -143,49 +159,61 @@
           }
       }
   },
-  
-  keylog:
+
+    keylog:
   {
-    help: 'keylog\nToggles keyboard event logging.\n',
-    fn: function()
-    {
-      if( Console.Options['keylog'] )
+      help: 'keylog\nToggles keyboard event logging.\n',
+      fn: function(_args)
       {
-        Console.Options['keylog'] = 0;
-        Console.Log( "Keyboard event logging disabled.\n" );
+          if (_args.length)
+          {
+              Console.Options['keylog'] = !parseInt(_args[0]);
+          }
+          if (Console.Options['keylog'])
+          {
+              Console.Options['keylog'] = 0;
+              Console.Log("Keyboard event logging disabled.\n");
+          }
+          else
+          {
+              Console.Options['keylog'] = 1;
+              Console.Log("Keyboard event logging enabled.\n");
+          }
       }
-      else
-      {
-        Console.Options['keylog'] = 1;
-        Console.Log( "Keyboard event logging enabled.\n" );
-      }
-    }
   },
 
-  keypointer:
+    keypointer:
   {
-    help: 'keypointer\nToggles 0x10co.de non-spec keyboard ringbuffer pointer at 0x9010\n',
-    fn: function()
-    {
-      if( Console.Options['keyptr'] )
+      help: 'keypointer\nToggles 0x10co.de non-spec keyboard ringbuffer pointer at 0x9010\n',
+      fn: function(_args)
       {
-        Console.Options['keyptr'] = 0;
-        Console.Log( "0x9010 keyboard ringbuffer pointer disabled.\n" );
+          if (_args.length)
+          {
+              Console.Options['keyptr'] = !parseInt(_args[0]);
+          }
+          if (Console.Options['keyptr'])
+          {
+              Console.Options['keyptr'] = 0;
+              Console.Log("0x9010 keyboard ringbuffer pointer disabled.\n");
+          }
+          else
+          {
+              Console.Options['keyptr'] = 1;
+              Emulator.WriteMem(0x9010, 0x9000);
+              Console.Log("0x9010 keyboard ringbuffer pointer enabled.\n");
+          }
       }
-      else
-      {
-        Console.Options['keyptr'] = 1;
-        Emulator.WriteMem(0x9010, 0x9000);
-        Console.Log( "0x9010 keyboard ringbuffer pointer enabled.\n" );
-      }
-    }
   },
 
-  keyringbuffer:
+    keyringbuffer:
   {
       help: 'keyringbuffer\nToggles between full ringbuffer emulation and just writing character data to 0x9000 only\n',
-      fn: function()
+      fn: function(_args)
       {
+          if (_args.length)
+          {
+              Console.Options.keyringbuffer = !parseInt(_args[0]);
+          }
           if (Console.Options.keyringbuffer)
           {
               Console.Options.keyringbuffer = 0;
@@ -198,40 +226,40 @@
           }
       }
   },
-  
-  map:
+
+    map:
   {
-    help: 'map [code1 [code2]]\nWhen keycode code1 is received by Javascript, code2 will be sent to the emulated ringbuffer. With no arguments, displays current mappings.\nUse keylog to discover codes sent by browser.\n',
-    fn: function( _args )
-    {
-      if( _args.length )
-      { 
-        if( _args[1] != undefined )
-        {
-          Console.Keymap[eval(_args[0])] = eval(_args[1]);
-          Console.Log( eval(_args[0]) + " mapped to " + (eval(_args[1])?eval(_args[1]):"[suppress]") );
-        }
-        else
-        {
-          Console.Keymap[eval(_args[0])] = undefined;
-          Console.Log( eval(_args[0]) + " mapping reset." );
-        }
-      }
-      else
+      help: 'map [code1 [code2]]\nWhen keycode code1 is received by Javascript, code2 will be sent to the emulated ringbuffer. With no arguments, displays current mappings.\nUse keylog to discover codes sent by browser.\n',
+      fn: function(_args)
       {
-        Console.Log( "Keyboard mappings: " );
-        for( var i in Console.Keymap )
-        {
-          if( Console.Keymap[i] != undefined )
+          if (_args.length)
           {
-            Console.Log( i + ' -> ' + (Console.Keymap[i]?Console.Keymap[i]:"[suppress]") );
+              if (_args[1] != undefined)
+              {
+                  Console.Keymap[parseInt(_args[0])] = parseInt(_args[1]);
+                  Console.Log(parseInt(_args[0]) + " mapped to " + (parseInt(_args[1]) ? parseInt(_args[1]) : "[suppress]"));
+              }
+              else
+              {
+                  Console.Keymap[parseInt(_args[0])] = undefined;
+                  Console.Log(parseInt(_args[0]) + " mapping reset.");
+              }
           }
-        }
-      }      
-    }
+          else
+          {
+              Console.Log("Keyboard mappings: ");
+              for (var i in Console.Keymap)
+              {
+                  if (Console.Keymap[i] != undefined)
+                  {
+                      Console.Log(i + ' -> ' + (Console.Keymap[i] ? Console.Keymap[i] : "[suppress]"));
+                  }
+              }
+          }
+      }
   },
 
-  help:
+    help:
   {
       help: 'help [command]\nDisplays information about a command or the set of available commands.',
       fn: function(_args)
@@ -271,11 +299,15 @@
         }
     }
 
+    Console.Shell = function(cmd)
+    {
+        DebugCommand(cmd.split(' '));
+    }
+
     Console.DebugCommand = function()
     {
-        var cmd = Console.inputArea.value.split(' ');
+        Console.Shell(Console.inputArea.value);
         Console.inputArea.value = '';
-        DebugCommand(cmd);
         return false;
     }
 
@@ -386,7 +418,7 @@
     // -------------    
 
     Console.prompt = 'Emulator command area. Type help for help.';
-    
+
     Console.HandleKeyDown = function(e)
     {
         if (!Console.EditCB)
@@ -405,7 +437,7 @@
         }
         else
         {
-            if( Console.inputArea.value == Console.prompt ) { Console.inputArea.value = ''; }
+            if (Console.inputArea.value == Console.prompt) { Console.inputArea.value = ''; }
             KeyboardFocus = Console.HandleKeyDown;
         }
     }
@@ -454,4 +486,4 @@
         }
     }
 
-})();       // (function(){
+})();            // (function(){

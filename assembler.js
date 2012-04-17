@@ -103,7 +103,7 @@ Assembler.Grammar =
             })( _m[0], _m[1] );
           }
         ],
-      directive: ["dat | origin | ret | halt | brk"],
+      directive: ["dat | origin | ret | halt | brk | shell"],
       
       basicopname: ["/set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb/ /\\s*/", 
             function(_m) { return _m[0]; }],
@@ -117,6 +117,7 @@ Assembler.Grammar =
       ret: ["'ret'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
       halt: ["'halt'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
       brk: ["'brk'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
+      shell: ["'.shell' /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
       
       dataliteral: ["expression",
                 function(_m){ CountAssembledWords(1); return (function(expr){return function() { EmitWord(eval(expr)); }})(_m[0][0]); }

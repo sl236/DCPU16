@@ -355,8 +355,8 @@
     {
         var addr = _arg.shift();
         var count = _arg.shift();
-        addr = (addr == undefined) ? 0 : eval(addr) & 0xFFF0;
-        count = (count == undefined) ? 1 : eval(count);
+        addr = (addr == undefined) ? 0 : parseInt(addr) & 0xFFF0;
+        count = (count == undefined) ? 1 : parseInt(count);
         var result = '';
         for (var i = 0; i < count; i++)
         {
