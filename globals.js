@@ -34,6 +34,8 @@ var Emulator =
     opCycles: [0, 1, 2, 2, 2, 3, 3, 2, 2, 1, 1, 1, 2, 2, 2, 2],
     mem: new Array(0x10000),
     cycles: 0,
+    walltime: 0,
+    timedcycles: 0, // walltime not accumulated over step/trace, only run, since the former dominated by overhead
     paused: 0,
 
     MemoryHooks: [],

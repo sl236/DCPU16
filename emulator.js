@@ -25,14 +25,22 @@
     // -----------------------
     function GetVal(_code)
     {
-        // cases laid out such that processing cost proportions are comparable to hardware
         if (_code >= 0x20)
         {
             return (_code - 0x20);
         }
-        if (_code < 0x08)
+        switch (_code & 0xf8)
         {
-            return Emulator.regs[_code];
+            case 0:
+                return Emulator.regs[_code];
+            case 8:
+                Emulator.cycles++;
+                return Emulator.mem[Emulator.regs[_code - 8]];
+            case 16:
+                Emulator.cycles++;
+                var result = Emulator.mem[Emulator.mem[Emulator.regs[9]] + Emulator.regs[_code - 0x10]];
+                Emulator.regs[9] = (Emulator.regs[9] + 1) & 0xFFFF;
+                return result;
         }
         switch (_code)
         {
@@ -59,19 +67,7 @@
                 var result = Emulator.mem[Emulator.regs[9]];
                 Emulator.regs[9] = (Emulator.regs[9] + 1) & 0xFFFF;
                 return result;
-
-            default:
-                if (_code < 0x10)
-                {
-                    Emulator.cycles++;
-                    return Emulator.mem[Emulator.regs[_code - 0x08]];
-                }
-                break;
         }
-        Emulator.cycles++;
-        var result = Emulator.mem[Emulator.mem[Emulator.regs[9]] + Emulator.regs[_code - 0x10]];
-        Emulator.regs[9] = (Emulator.regs[9] + 1) & 0xFFFF;
-        return result;
     }
 
     // -----------------------
@@ -80,33 +76,28 @@
         // note a has already been fetched with GetVal
         if (_code < 0x20)
         {
-            if (_code < 0x08)
+            switch (_code & 0xf8)
             {
-                Emulator.regs[_code] = _val;
+                case 0:
+                    Emulator.regs[_code] = _val;
+                    return;
+                case 8:
+                    Emulator.WriteMem(Emulator.regs[_code - 0x08], _val);
+                    return;
+                case 16:
+                    Emulator.WriteMem(Emulator.mem[_apc] + Emulator.regs[_code - 0x10], _val);
+                    return;
             }
-            else
+            switch (_code)
             {
-                switch (_code)
-                {
-                    case 0x18: Emulator.WriteMem(_asp, _val); return;
-                    case 0x19: Emulator.WriteMem(_asp, _val); return;
-                    case 0x1A: Emulator.WriteMem((_asp + 0xFFFF) & 0xFFFF, _val); return;
-                    case 0x1B: Emulator.regs[8] = _val; return;
-                    case 0x1C: Emulator.regs[9] = _val; return;
-                    case 0x1D: Emulator.regs[10] = _val; return;
-                    case 0x1E:
-                        Emulator.WriteMem(Emulator.mem[_apc], _val);
-                        return;
-                    case 0x1F:
-                        //Emulator.WriteMem(_apc, _val);
-                        return;
-                }
+                case 0x18: Emulator.WriteMem(_asp, _val); return;
+                case 0x19: Emulator.WriteMem(_asp, _val); return;
+                case 0x1A: Emulator.WriteMem((_asp + 0xFFFF) & 0xFFFF, _val); return;
+                case 0x1B: Emulator.regs[8] = _val; return;
+                case 0x1C: Emulator.regs[9] = _val; return;
+                case 0x1D: Emulator.regs[10] = _val; return;
+                case 0x1E: Emulator.WriteMem(Emulator.mem[_apc], _val); return;
             }
-            if (_code < 0x10)
-            {
-                Emulator.WriteMem(Emulator.regs[_code - 0x08], _val); return;
-            }
-            Emulator.WriteMem(Emulator.mem[_apc] + Emulator.regs[_code - 0x10], _val);
         }
     }
 
@@ -299,7 +290,13 @@
         {
             stat += Emulator.regNames[i] + ':' + Console.H16(Emulator.regs[i]) + '  ';
         }
-        stat += '   ' + Emulator.cycles + ' cycles\n' + Emulator.Disassemble(Emulator.regs[9])[0];
+        stat += Emulator.cycles + 'cyc ';
+        if (Emulator.timedcycles && Emulator.walltime)
+        {
+            var khz = Math.floor(Emulator.cycles / Emulator.walltime);
+            stat += khz + 'khz'
+        }
+        stat += '\n' + Emulator.Disassemble(Emulator.regs[9])[0];
         if (!Emulator.regs[11])
         {
             stat += ' ; ( will skip ) ';
@@ -400,11 +397,16 @@
     Emulator.Run = function()
     {
         var start = (new Date()).getTime();
+        var time = start;
+        var startcyc = Emulator.cycles;
 
         while (!Emulator.paused)
         {
-            if (((new Date()).getTime() - start) > 10)
+            time = ((new Date()).getTime() - start);
+            if (time > 10)
             {
+                Emulator.walltime += time;
+                Emulator.timedcycles += Emulator.cycles - startcyc;
                 setTimeout("Emulator.Run()", 0);
                 return;
             }
@@ -415,6 +417,10 @@
                 Emulator.Step();
             }
         }
+
+        time = ((new Date()).getTime() - start);
+        Emulator.walltime += time;
+        Emulator.timedcycles += Emulator.cycles - startcyc;
     }
 
-})();   // (function(){
+})();            // (function(){
