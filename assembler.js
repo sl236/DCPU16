@@ -109,7 +109,7 @@ Assembler.Grammar =
             function(_m) { return _m[0]; }],
       extendedopname: ["/jsr/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; }],
       
-      dat: ["'dat' /\\s*/ data",       function(_m) { return _m[2]; } ],
+      dat: ["/[.]?(dat|dc)/ /\\s*/ data",       function(_m) { return _m[2]; } ],
       data: ["datatuple | dataunit" ],
       datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
       dataunit: ["dataliteral | quotedstring"],
