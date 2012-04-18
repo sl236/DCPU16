@@ -94,6 +94,10 @@
       {
           function go(_data)
           {
+              if (_data && _data.indexOf('Raw text') == 0)
+              {
+                  _data = '; ' + _data;
+              }
               Console.BeginEdit(function(_text)
               {
                   Assembler.Assemble(_text);
@@ -484,6 +488,13 @@
         {
             return KeyboardFocus(e);
         }
+
+        var m = (/shell=([^&]+)/i).exec(window.location);
+        if (m && m[1])
+        {
+            DebugCommand(unescape(m[1]).replace(/,/g, ' ').split(' '));
+        }
+
     }
 
-})();            // (function(){
+})();                 // (function(){
