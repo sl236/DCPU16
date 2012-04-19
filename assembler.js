@@ -70,12 +70,12 @@ function BeginOp()
 
 function EmitBasicOp( _name, _acode, _bcode )
 {
-  Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name]|(_acode<<4)|(_bcode<<10))>>>0;
+  Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name.toLowerCase()]|(_acode<<4)|(_bcode<<10))>>>0;
 }
 
 function EmitExtendedOp( _name, _acode )
 {
-  Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name]<<4|(_acode<<10))>>>0;
+  Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name.toLowerCase()]<<4|(_acode<<10))>>>0;
 }
 
 Assembler.Grammar =
@@ -114,10 +114,10 @@ Assembler.Grammar =
       datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
       dataunit: ["dataliteral | quotedstring"],
       
-      ret: ["'ret'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
-      halt: ["'halt'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
-      brk: ["'brk'", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
-      shell: ["'.shell' /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
+      ret: ["/ret/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
+      halt: ["/halt/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
+      brk: ["/brk/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
+      shell: ["/.shell/ /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
       
       dataliteral: ["expression",
                 function(_m){ CountAssembledWords(1); return (function(expr){return function() { EmitWord(eval(expr)); }})(_m[0][0]); }
@@ -168,7 +168,7 @@ Assembler.Grammar =
         } 
       ],
      
-      numericescape: ["/(([0][0-7][0-7][0-7])|([x][0-9a-f][0-9a-f]([0-9a-f][0-9a-f])?))/", 
+      numericescape: ["/(([0][0-7][0-7][0-7])|([x][0-9a-fA-F][0-9a-fA-F]([0-9a-fA-F][0-9a-fA-F])?))/", 
         function(_m){ CountAssembledWords(1); return (function(_code){return function() { EmitWord(_code); }})(eval('0' + _m[0])); } 
       ],            
       
@@ -194,7 +194,7 @@ Assembler.Grammar =
       prefixlabel: ["':' /[a-zA-Z_][a-zA-Z_0-9]+/ /\\s*/",  function(_m) { EmitLabel(_m[1]); return 0; } ],
       postfixlabel: ["/[a-zA-Z_][a-zA-Z_0-9]+/ ':' /\\s*/",  function(_m) { EmitLabel(_m[0]); return 0; } ],
       
-      reg_gpr: ["/;[abcxyzij]/ /\\s*/",function(_m) 
+      reg_gpr: ["/;[abcxyzijABCXYZIJ]/ /\\s*/",function(_m) 
         { 
           return (function(id)
           {
@@ -202,7 +202,7 @@ Assembler.Grammar =
               {
                 return id;
               }
-          })('abcxyzij'.indexOf(_m[0].charAt(1)));
+          })('abcxyzij'.indexOf(_m[0].charAt(1).toLowerCase()));
         }
       ],
       
@@ -247,14 +247,14 @@ Assembler.Grammar =
           }
         ],
         
-      regindirect: ["/\\[\\s*/ /;[abcxyzij]/ /\\s*\\]\\s*/", 
-          function(_m) { return (function(id){return function(){return id+0x8;}})('abcxyzij'.indexOf(_m[1].charAt(1))); } ],
+      regindirect: ["/\\[\\s*/ /;[abcxyzijABCXYZIJ]/ /\\s*\\]\\s*/", 
+          function(_m) { return (function(id){return function(){return id+0x8;}})('abcxyzij'.indexOf(_m[1].charAt(1).toLowerCase())); } ],
       
       regindoffset: ["regindoffsetleft | regindoffsetright"],
       regindoffsetleft: ["/\\[\\s*/ expression /\\s*\\+\\s*/ /;[abcxyzij]/ /\\s*\\]/",
           function(_m) { 
             var expr = _m[1][0];
-            var id = 'abcxyzij'.indexOf(_m[3].charAt(1));
+            var id = 'abcxyzij'.indexOf(_m[3].charAt(1).toLowerCase());
             CountAssembledWords(1);
             return (function(i, e){
             return function() 
@@ -264,10 +264,10 @@ Assembler.Grammar =
             }})(id, expr);
           }
         ],      
-      regindoffsetright: ["/\\[\\s*/ /;[abcxyzij]/ /\\s*\\+\\s*/ expression /\\s*\\]/",
+      regindoffsetright: ["/\\[\\s*/ /;[abcxyzijABCXYZIJ]/ /\\s*\\+\\s*/ expression /\\s*\\]/",
           function(_m) { 
             var expr = _m[3][0];
-            var id = 'abcxyzij'.indexOf(_m[1].charAt(1));
+            var id = 'abcxyzij'.indexOf(_m[1].charAt(1).toLowerCase());
             CountAssembledWords(1);
             return (function(i, e){
             return function() 
@@ -360,8 +360,8 @@ Assembler.Assemble = function(_text)
   for( var i = 0; i < lines.length; i++ )
   {
     Assembler.CurrLine = i+1;
-    var line = lines[i].toLowerCase().replace(/;.*$/g, '' ).replace(/[\r\n]/g, ''); // lower case, strip comments, strip newline at end
-    line = line.replace(/\b([abcxyzij]|pc|sp|o)\b/g, ';$&'); // escape register names so they can be differentiated from labels
+    var line = lines[i].replace(/;.*$/g, '' ).replace(/[\r\n]/g, ''); // strip comments, strip newline at end
+    line = line.replace(/\b([abcxyzij]|pc|sp|o)\b/ig, ';$&'); // escape register names so they can be differentiated from labels
     var r = [];
     var err = '';
     try

@@ -76,7 +76,7 @@ Parser.prototype.ParseGrammarLine = function( _line )
                 
             case '/':
                     token = '^'+token.substring(1,token.length-1);
-                    curr.push( [0, new RegExp(token)] ); // regexp
+                    curr.push( [0, new RegExp(token,'i')] ); // regexp
                 break;
                 
             case '\'':
