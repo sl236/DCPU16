@@ -26,11 +26,18 @@ proclist: dat idleproctable
 ; ------------------
 ; kernel implementation
 ; ------------------
+
+; proctable format
 def proctable_sp_offset		0
 def proctable_next_offset	1
 def proctable_prev_offset	2
 def proctable_block_start	3
 def proctable_size			proctable_block_start
+
+; executable format
+def exeheader_exesize		0	; executable area word count
+def exeheader_exestart		1	; executable area first word offset
+; words from here to exeheader_exestart are relocation offsets
 
 ; 0 - sp
 ; 1 - next process
@@ -97,19 +104,25 @@ exit_impl:
 		
 ; ----- Spawn	
 ; ----- Allocate A words of memory for a new process. 
-; ----- Copies B words from C to start of new process space and adds start of new process space to scheduler.
+; ----- B points to process header; this will be used to copy and relocate the binary. A must be large enough for process.
 ; ----- New process will have at least A words available between start of its process space and SP
 ; ----- but may have more.
 def align 32
 spawn_impl:
-	add a, (proctable_size+(align-1))	; reserve space for process table, pad to alignment
-	and a, ~align						; ensure alignment					
+	add a, (proctable_size+(align-1))	; add proctable size to memory requested by process, and enough padding for alignment
+	and a, ~align						; ensure alignment
+	sub a, (proctable_size-1)			; (size-proctable_size) for a block is one less instruction than size to calculate. Subtract another 1 so we can use ifg
 	set x, freelist						; start from the freelist
 	set z, 0xffff						; best found size
 
 1:
-	set y, x
-	sub y, [x + proctable_block_start]
+	set y, x							; start of block descriptor
+	sub y, [x + proctable_block_start]	; size of memory available to process
+	ifg y, a
+	  b 1f
+	set x, [x]
+	b 1b
+	
 	
 	sub pc, 1 ; TODO
 	

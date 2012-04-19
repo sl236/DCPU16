@@ -106,7 +106,7 @@ Assembler.Grammar =
 
       basicop: ["basicopname /(,\\s*)?/ operand /\\s*,?\\s*/ operand", function(_m) 
           {
-            CountAssembledWords(1); 
+            CountAssembledWords(1);
             return (function(n, a, b){
                return function() { BeginOp(); EmitBasicOp( n, a(), b() ); }
               })( _m[0], _m[2], _m[4] );
@@ -120,7 +120,7 @@ Assembler.Grammar =
             })( _m[0], _m[1] );
           }
         ],
-      directive: ["dat | origin | ret | halt | brk | shell | def"],
+      directive: ["dat | origin | ret | halt | brk | shell | def | autobranch"],
       
       basicopname: ["/\\b(set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb)\\b/ /\\s*/", 
             function(_m) { return _m[0]; }],
@@ -132,10 +132,40 @@ Assembler.Grammar =
           } 
       ],
       
-      dat: ["/[.]?\\b(dat|dc)\\b\\s*/ data",       function(_m) { return _m[1]; } ],
+      dat: ["/[.]?\\b(dat|dc)\\b\\s*/ data",        function(_m) { return _m[1]; } ],
       data: ["datatuple | dataunit" ],
-      datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
+      datatuple: ["dataunit /\\s*,\\s*/ data",  	function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
       dataunit: ["dataliteral | quotedstring"],
+
+	  autobranch: ["/;b\\b\\s*/ expression",		function(_m)
+	  {
+            CountAssembledWords(1);
+			var pc = Assembler.LabelResolver.pc;
+			return (function(_pc, _expr){
+              return function() 
+			  {
+			  	var tgt = (eval(_expr)>>>0)&0xFFFF;
+			  	BeginOp();
+				if( tgt < 0x20 )
+				{
+					EmitBasicOp( 'set', 0x1c, tgt + 0x20 ); 
+				}
+				else if( (_pc >= tgt) && (( _pc - tgt ) < 0x20 ) )
+				{
+					EmitBasicOp( 'sub', 0x1c, ( _pc - tgt )+0x20 ); 
+				}
+				else if( (tgt > _pc) && (( tgt - _pc ) < 0x20 ) )
+				{
+					EmitBasicOp( 'add', 0x1c, ( tgt - _pc )+0x20 ); 
+				}
+				else
+				{
+				    Assembler.ErrorState = 1;
+				    Console.Log( "*** unable to generate single-word branch in line " + Assembler.CurrLine() );
+				}
+			  }
+            })( pc, _m[1][0] );						
+	  }],
       
       ret: ["/[.]?\\bret\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
       halt: ["/[.]?\\bhalt\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
@@ -317,34 +347,29 @@ Assembler.Grammar =
             return ["Assembler.ResolveLabel('" + _m[0] + "')", 1]; 
           }
       ],
-      resolved_numericlabel:     ["/[0..9]+/ /[bf]\\b/ /\\s*/", function(_m)
+      resolved_numericlabel:     ["/[0-9]+/ /[bf]\\b/ /\\s*/", function(_m)
           { 
             var lbl = '$' + Assembler.CurrLine() + '$' + _m[0];
             if( _m[1].toLowerCase() == 'b' )
             {
                 lbl = Assembler.LabelResolver.numericBackward[_m[0]];
-                if( !lbl ) 
+                if( !lbl || !DefinedLabel( lbl ) ) 
                 { 
                     Console.Log( Assembler.CurrLine() + ': ' + ' undefined backward label ' + _m[0] );
                     Assembler.ErrorState = 1;
                 }
+       	        return [ Assembler.ResolveLabel(lbl), 0 ];
+            }
+			
+            if( Assembler.LabelResolver.numericForward[_m[0]] )
+            {
+                lbl = Assembler.LabelResolver.numericForward[_m[0]];
             }
             else
             {
-                if( Assembler.LabelResolver.numericForward[_m[0]] )
-                {
-                    lbl = Assembler.LabelResolver.numericForward[_m[0]];
-                }
-                else
-                {
-                    Assembler.LabelResolver.numericForward[_m[0]] = lbl;
-                }
+                Assembler.LabelResolver.numericForward[_m[0]] = lbl;
             }
             
-            if( DefinedLabel( lbl ) )
-            {
-                return [ Assembler.ResolveLabel(lbl), 0 ];
-            }
             return ["Assembler.ResolveLabel('" + lbl + "')", 1]; 
           }
       ],
