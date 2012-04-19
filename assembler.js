@@ -41,6 +41,18 @@ function EmitLabel(_label)
   Assembler.LabelResolver.labels[_label] = Assembler.LabelResolver.pc;
 }
 
+function SetNumericLabel( _id )
+{
+    if( Assembler.LabelResolver.numericForward[_id] )
+    {
+        EmitLabel(Assembler.LabelResolver.numericForward[_id]);
+        Assembler.LabelResolver.numericForward[_id] = null;
+    }
+    var backward = '$' + Assembler.CurrLine() + '$' + _id;
+    Assembler.LabelResolver.numericBackward[_id] = backward;
+    EmitLabel( backward );
+}
+
 function EmitWord(_word)
 {
   Assembler.BlockAccumulator.block.push((_word>>>0)&0xFFFF);
@@ -201,9 +213,10 @@ Assembler.Grammar =
             
       labels: ["maybelabels | label" ],
       maybelabels: ["label /\\s*/ labels" ],
-      label: ["prefixlabel | postfixlabel" ],
+      label: ["prefixlabel | postfixlabel | numericlabel" ],
       prefixlabel: ["':' identifier /\\s*/",  function(_m) { EmitLabel(_m[1]); return 0; } ],
       postfixlabel: ["identifier ':' /\\s*/",  function(_m) { EmitLabel(_m[0]); return 0; } ],
+      numericlabel: ["/[0-9]+/ ':' /\\s*/",  function(_m) { SetNumericLabel(_m[0]); return 0; } ],
       
       reg_gpr: ["/;[abcxyzijABCXYZIJ]/ /\\s*/",function(_m) 
         { 
@@ -292,7 +305,7 @@ Assembler.Grammar =
       expression:     ["sum"],
       sum:            ["addop | mul"],
       mul:            ["mulop | val"],
-      val:            ["brackets | resolved_identifier | number"],
+      val:            ["brackets | resolved_identifier | resolved_numericlabel | number"],
       brackets:       ["/\\(\\s*/ expression /\\s*\\)\\s*/", function(_m){ return ['(' + _m[1][0] + ')', _m[1][1] ]; } ],
       resolved_identifier:     ["identifier", function(_m)
           { 
@@ -301,6 +314,37 @@ Assembler.Grammar =
                 return [ Assembler.ResolveLabel(_m[0]), 0 ];            
             }
             return ["Assembler.ResolveLabel('" + _m[0] + "')", 1]; 
+          }
+      ],
+      resolved_numericlabel:     ["/[0..9]+/ /[bf]\\b/ /\\s*/", function(_m)
+          { 
+            var lbl = '$' + Assembler.CurrLine() + '$' + _m[0];
+            if( _m[1].toLowerCase() == 'b' )
+            {
+                lbl = Assembler.LabelResolver.numericBackward[_m[0]];
+                if( !lbl ) 
+                { 
+                    Console.Log( Assembler.CurrLine() + ': ' + ' undefined backward label ' + _m[0] );
+                    Assembler.ErrorState = 1;
+                }
+            }
+            else
+            {
+                if( Assembler.LabelResolver.numericForward[_m[0]] )
+                {
+                    lbl = Assembler.LabelResolver.numericForward[_m[0]];
+                }
+                else
+                {
+                    Assembler.LabelResolver.numericForward[_m[0]] = lbl;
+                }
+            }
+            
+            if( DefinedLabel( lbl ) )
+            {
+                return [ Assembler.ResolveLabel(lbl), 0 ];
+            }
+            return ["Assembler.ResolveLabel('" + lbl + "')", 1]; 
           }
       ],
       identifier:     ["/[a-zA-Z_][a-zA-Z_0-9]+/ /\\s*/", function(_m){ return _m[0]; }],
@@ -328,7 +372,7 @@ Assembler.ResolveLabel = function( _label )
   if( Assembler.LabelResolver.labels[_label] == undefined )
   {
     Assembler.ErrorState = 1;
-    Console.Log( "*** warning: unable to resolve '" + _label + "' in line " + Assembler.CurrLine );
+    Console.Log( "*** warning: unable to resolve '" + _label + "' in line " + Assembler.CurrLine() );
     return 0;
   }
   return Assembler.LabelResolver.labels[_label];
@@ -342,7 +386,6 @@ Assembler.Reset = function()
 {
   Assembler.BlockAccumulator = { blocks: [ ], origin: 0, block: [ ] };
   Assembler.LabelResolver = { labels: [ ], pc: 0 };
-  Assembler.CurrLine = 1;
 }
 
 // -----------------------
@@ -375,6 +418,8 @@ Assembler.Assemble = function(_text)
   Assembler.BlockAccumulator.blocks = [ ];
   Assembler.LabelResolver.pc = 0;
   Assembler.ErrorState = 0;
+  Assembler.LabelResolver.numericForward = [ ];
+  Assembler.LabelResolver.numericBackward = [ ];
   
   Assembler.Macros = [ ];
   Assembler.MacroStarts = [ ];
@@ -421,7 +466,7 @@ Assembler.Assemble = function(_text)
   var result = [ ];
   for( var i = 0; i < lines.length; i++ )
   {
-    Assembler.CurrLine = i+1;
+    Assembler.CurrLine = (function(_i){ return function() { return _i+1; }; })(i);
     var line = lines[i];
     var macro = macrore.exec( line );
     
@@ -431,6 +476,13 @@ Assembler.Assemble = function(_text)
         var r = [];
         var err = '';
         line = toparse[j];
+        
+        Assembler.CurrLine =  (function( _str ){ return function() { return _str; } })
+        (
+            (macro && Assembler.Macros[macro[0]]) ? 
+                ((i+1) + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')')
+               : (i+1)
+        );
         
         try
         {
@@ -444,12 +496,7 @@ Assembler.Assemble = function(_text)
         if( !r[0] )
         {
           Assembler.ErrorState = 1;
-          var err = Assembler.CurrLine;
-          if( macro && Assembler.Macros[macro[0]] )
-          {
-            err = err + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')';
-          }
-          Console.Log( err + ": failed to parse " + line );
+          Console.Log( Assembler.CurrLine() + ": failed to parse " + line );
         }
         
         if( typeof(r[1]=='function') )
@@ -457,7 +504,7 @@ Assembler.Assemble = function(_text)
           var assemblefn = r[1]();
           if( typeof(assemblefn) =='function' )
           {
-            result.push( [ i+1, assemblefn ] );
+            result.push( [ Assembler.CurrLine, assemblefn ] );
           }
         }
     }

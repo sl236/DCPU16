@@ -1,0 +1,113 @@
+; ------------------
+; public API
+; ------------------
+
+def Exit			0x00	; exits current process, releasing its memory and removing it from the task list
+def Spawn			0x01	; allocate A words of memory for a new process. Copies B words from C to start of new process space and adds C to scheduler.
+def KernelTables	0x18	
+def TaskSwitch		0x1f	; Assumes return address on stack. Preserves sp.
+
+; ------------------
+; initial setup
+.org 0
+	set pc, init
+
+.org KernelTables				; private kernel tables
+freelist: dat freelist			; freelist next pointer
+proclist: dat idleproctable
+          dat freelist			; freelist prev pointer
+		  dat freelist			; dummy "free" block size
+          		
+; ------------------
+; kernel implementation
+; ------------------
+def proctable_sp_offset		0
+def proctable_next_offset	1
+def proctable_prev_offset	2
+def proctable_block_start	3
+def proctable_size			proctable_block_start
+
+; 0 - sp
+; 1 - next process
+; 2 - prev process
+; 3 - start of process memory
+; [sp] holds return address
+; process memory ends at end of process table
+; process stack begins at start of process table
+
+; ----- TaskSwitch
+.org TaskSwitch
+taskswitch_impl:
+	set a,   [proclist]	; address of current process table
+	set [a], sp			; store sp
+	set a,   [a+1]		; next process
+	set sp,  [a]		; fetch sp
+	set pc,  pop		; return
+
+; ----- Exit
+exit_impl:
+	set c, proclist		; [proclist] is current process
+	set a, [c]			; a = address of current process' table
+	set b, [a+2]		; previous live process
+	set [c], b			; current process is now the previous process
+	set [b+2], [a+1]	; remove current process from process list (previous' next is now our next)
+	
+	set x, freelist		; freelist start	
+1:						; insert into freelist, keeping ordered
+	set y, x			; previous item
+	set x, [x]			; next item
+	ife x, freelist		; if we've come back to the start, bail and add at front
+		set pc, 2f		; can skip the coalesce with next block check
+	ifg a, x			; if a comes after the next block,
+		set pc, 1b		;	loop round
+		
+	; coalesce with next block? 
+	set b, [x+proctable_block_start]	; start of next block
+	set c, a							; to calculate end of this block,
+	add c, proctable_block_size			;    add block size offset to current block start
+	ifn b, c							; if end of this block is not start of next block
+		set pc, 2f						; skip over the coalesce operation
+	set [x+proctable_block_start], [a+proctable_block_start]	; copy this block's start to next block's table
+	set a, x							; use next block's table for both blocks
+	set x, [x]							; next is now next's next
+2:
+	set b, [a+proctable_block_start]	; start of block being freed
+	set c, y+proctable_block_size		; end of previous block	
+	ifn b, c							; if they're not equal
+		set pc, 2f						; don't coalesce
+		
+	set [a+proctable_block_start], [y+proctable_block_start]	; use previous block's start in our table
+	set y, [y+proctable_prev_offset]							; previous block's previous is now previous
+
+2:
+	set [a], x							; x is our next
+	set [a+proctable_prev_offset], y	; y is our prev
+	set [y], a							; we are prev's next
+	set [x+proctable_prev_offset], a	; we are next's prev
+	
+	; done! taskswitch to next process
+	set sp,  [proclist]	; fetch sp
+	set pc,  pop		; return
+		
+; ----- Spawn	
+spawn_impl:
+	sub pc, 1 ; TODO
+
+; ------------------
+; idle process
+; ------------------
+:idleentry
+	jsr taskswitch
+:idlestack
+	dat idleentry
+:idleproctable
+	dat idlestack
+	dat idleproctable
+	dat idleproctable
+	dat idleentry	
+
+; ------------------
+; bootstrapping
+; ------------------
+:init
+	sub pc, 1 ; TODO
