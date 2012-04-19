@@ -304,7 +304,8 @@ Assembler.Grammar =
       
       expression:     ["sum"],
       sum:            ["addop | mul"],
-      mul:            ["mulop | val"],
+      mul:            ["mulop | unaryop"],
+      unaryop:        ["invert | val"],
       val:            ["brackets | resolved_identifier | resolved_numericlabel | number"],
       brackets:       ["/\\(\\s*/ expression /\\s*\\)\\s*/", function(_m){ return ['(' + _m[1][0] + ')', _m[1][1] ]; } ],
       resolved_identifier:     ["identifier", function(_m)
@@ -351,6 +352,7 @@ Assembler.Grammar =
       number:         ["/((0x[0-9a-fA-F]+)|(([0-9]+([.][0-9]+)?)|([.][0-9]+)))/ /\\s*/",function(_m){ return ["("+_m[0]+")", 0]; } ],
       addop:          ["mul /\\s*/ /[-+]/ /\\s*/ sum",   function(_m){ return ["("+_m[0][0]+_m[2]+_m[4][0]+")", _m[0][1]|_m[4][1] ]; } ],
       mulop:          ["val /\\s*/ /[*\\/%]/ /\\s*/ mul",function(_m){ return ["("+_m[0][0]+_m[2]+_m[4][0]+")", _m[0][1]|_m[4][1] ]; } ],
+      invert:         ["'~' expression", function(_m) { return ["((~(" + _m[1][0] + "))>>>0)", _m[1][1] ]; } ]
     };
         
 Assembler.BlockAccumulator = 

@@ -1,11 +1,16 @@
 ; ------------------
 ; public API
 ; ------------------
+; NB. kernel functions may trash any registers except SP (this includes TaskSwitch).
+; Kernel functions will not push data to process stack.
+; The range [ScratchArea, KernelTables) is available for application use. 
+; It is not preserved over TaskSwitch but is preserved over other kernel calls.
 
-def Exit			0x00	; exits current process, releasing its memory and removing it from the task list
-def Spawn			0x01	; allocate A words of memory for a new process. Copies B words from C to start of new process space and adds C to scheduler.
-def KernelTables	0x18	
-def TaskSwitch		0x1f	; Assumes return address on stack. Preserves sp.
+def Exit			0x00
+def Spawn			0x01
+def ScratchArea		0x14
+def KernelTables	0x18
+def TaskSwitch		0x1f
 
 ; ------------------
 ; initial setup
@@ -13,10 +18,10 @@ def TaskSwitch		0x1f	; Assumes return address on stack. Preserves sp.
 	set pc, init
 
 .org KernelTables				; private kernel tables
-freelist: dat freelist			; freelist next pointer
+freelist: dat freemem_block		; freelist next pointer
 proclist: dat idleproctable
-          dat freelist			; freelist prev pointer
-		  dat freelist			; dummy "free" block size
+          dat freemem_block		; freelist prev pointer
+		  dat freelist			; freelist head block start
           		
 ; ------------------
 ; kernel implementation
@@ -36,6 +41,7 @@ def proctable_size			proctable_block_start
 ; process stack begins at start of process table
 
 ; ----- TaskSwitch
+; ----- Assumes return address on stack. Preserves sp, nothing else
 .org TaskSwitch
 taskswitch_impl:
 	set a,   [proclist]	; address of current process table
@@ -45,6 +51,7 @@ taskswitch_impl:
 	set pc,  pop		; return
 
 ; ----- Exit
+; ----- Exits current process, releasing its memory and removing it from the task list
 exit_impl:
 	set c, proclist		; [proclist] is current process
 	set a, [c]			; a = address of current process' table
@@ -54,32 +61,31 @@ exit_impl:
 	
 	set x, freelist		; freelist start	
 1:						; insert into freelist, keeping ordered
-	set y, x			; previous item
 	set x, [x]			; next item
-	ife x, freelist		; if we've come back to the start, bail and add at front
-		set pc, 2f		; can skip the coalesce with next block check
-	ifg a, x			; if a comes after the next block,
+	ifg x, a			; if the next block still comes after a
 		set pc, 1b		;	loop round
+	set y, [x+proctable_prev_offset]	; fetch previous item
 		
 	; coalesce with next block? 
 	set b, [x+proctable_block_start]	; start of next block
 	set c, a							; to calculate end of this block,
 	add c, proctable_block_size			;    add block size offset to current block start
 	ifn b, c							; if end of this block is not start of next block
-		set pc, 2f						; skip over the coalesce operation
+		set pc, 1f						; skip over the coalesce operation
 	set [x+proctable_block_start], [a+proctable_block_start]	; copy this block's start to next block's table
 	set a, x							; use next block's table for both blocks
 	set x, [x]							; next is now next's next
-2:
+
+1:
 	set b, [a+proctable_block_start]	; start of block being freed
 	set c, y+proctable_block_size		; end of previous block	
 	ifn b, c							; if they're not equal
-		set pc, 2f						; don't coalesce
+		set pc, 1f						; don't coalesce
 		
 	set [a+proctable_block_start], [y+proctable_block_start]	; use previous block's start in our table
 	set y, [y+proctable_prev_offset]							; previous block's previous is now previous
 
-2:
+1:
 	set [a], x							; x is our next
 	set [a+proctable_prev_offset], y	; y is our prev
 	set [y], a							; we are prev's next
@@ -90,8 +96,24 @@ exit_impl:
 	set pc,  pop		; return
 		
 ; ----- Spawn	
+; ----- Allocate A words of memory for a new process. 
+; ----- Copies B words from C to start of new process space and adds start of new process space to scheduler.
+; ----- New process will have at least A words available between start of its process space and SP
+; ----- but may have more.
+def align 32
 spawn_impl:
+	add a, (proctable_size+(align-1))	; reserve space for process table, pad to alignment
+	and a, ~align						; ensure alignment					
+	set x, freelist						; start from the freelist
+	set z, 0xffff						; best found size
+
+1:
+	set y, x
+	sub y, [x + proctable_block_start]
+	
 	sub pc, 1 ; TODO
+	
+	
 
 ; ------------------
 ; idle process
