@@ -31,6 +31,11 @@ function CountAssembledWords(_words)
   Assembler.LabelResolver.pc += _words;
 }
 
+function DefinedLabel(_label)
+{
+    return (Assembler.LabelResolver.labels[_label] != undefined);
+}
+
 function EmitLabel(_label)
 {
   Assembler.LabelResolver.labels[_label] = Assembler.LabelResolver.pc;
@@ -109,9 +114,9 @@ Assembler.Grammar =
             function(_m) { return _m[0]; }],
       extendedopname: ["/\\bjsr\\b/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; }],
       
-      def: ["/[.]?\\bdef\\s+/ identifier expression", function(_m) 
+      def: ["/[.]?\\bdef\\b\\s*/ identifier /(,\\s*)?/ expression", function(_m) 
           { 
-            return Assembler.LabelResolver.labels[_m[1]] = eval(_m[2]); 
+            return Assembler.LabelResolver.labels[_m[1]] = eval(_m[3][0]); 
           } 
       ],
       
@@ -120,9 +125,9 @@ Assembler.Grammar =
       datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
       dataunit: ["dataliteral | quotedstring"],
       
-      ret: ["/\\bret\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
-      halt: ["/\\bhalt\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
-      brk: ["/\\bbrk\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
+      ret: ["/[.]?\\bret\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
+      halt: ["/[.]?\\bhalt\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
+      brk: ["/[.]?\\bbrk\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
       shell: ["/[.]\\bshell\\b/ /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
       
       dataliteral: ["expression",
@@ -289,8 +294,16 @@ Assembler.Grammar =
       mul:            ["mulop | val"],
       val:            ["brackets | resolved_identifier | number"],
       brackets:       ["/\\(\\s*/ expression /\\s*\\)\\s*/", function(_m){ return ['(' + _m[1][0] + ')', _m[1][1] ]; } ],
-      resolved_identifier:     ["identifier /\\s*/",function(_m){ return ["Assembler.ResolveLabel('" + _m[0] + "')", 1]; }],
-      identifier:     ["/[a-zA-Z_][a-zA-Z_0-9]+/"],
+      resolved_identifier:     ["identifier", function(_m)
+          { 
+            if( DefinedLabel( _m[0] ) )
+            {
+                return [ Assembler.ResolveLabel(_m[0]), 0 ];            
+            }
+            return ["Assembler.ResolveLabel('" + _m[0] + "')", 1]; 
+          }
+      ],
+      identifier:     ["/[a-zA-Z_][a-zA-Z_0-9]+/ /\\s*/", function(_m){ return _m[0]; }],
       number:         ["/((0x[0-9a-fA-F]+)|(([0-9]+([.][0-9]+)?)|([.][0-9]+)))/ /\\s*/",function(_m){ return ["("+_m[0]+")", 0]; } ],
       addop:          ["mul /\\s*/ /[-+]/ /\\s*/ sum",   function(_m){ return ["("+_m[0][0]+_m[2]+_m[4][0]+")", _m[0][1]|_m[4][1] ]; } ],
       mulop:          ["val /\\s*/ /[*\\/%]/ /\\s*/ mul",function(_m){ return ["("+_m[0][0]+_m[2]+_m[4][0]+")", _m[0][1]|_m[4][1] ]; } ],
@@ -436,7 +449,7 @@ Assembler.Assemble = function(_text)
           {
             err = err + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')';
           }
-          Console.Log( err + ": failed to parse " + line + err );
+          Console.Log( err + ": failed to parse " + line );
         }
         
         if( typeof(r[1]=='function') )
