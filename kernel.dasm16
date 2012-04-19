@@ -32,7 +32,7 @@ def proctable_sp_offset		0
 def proctable_next_offset	1
 def proctable_prev_offset	2
 def proctable_block_start	3
-def proctable_size			proctable_block_start
+def proctable_size			(proctable_block_start+1)
 
 ; executable format
 def exeheader_exesize		0	; executable area word count
@@ -70,24 +70,25 @@ exit_impl:
 1:						; insert into freelist, keeping ordered
 	set x, [x]			; next item
 	ifg x, a			; if the next block still comes after a
-		set pc, 1b		;	loop round
+		b 1b			;	loop round
 	set y, [x+proctable_prev_offset]	; fetch previous item
 		
 	; coalesce with next block? 
 	set b, [x+proctable_block_start]	; start of next block
 	set c, a							; to calculate end of this block,
-	add c, proctable_block_size			;    add block size offset to current block start
+	add c, proctable_size				;    add block size offset to current block start
 	ifn b, c							; if end of this block is not start of next block
-		set pc, 1f						; skip over the coalesce operation
+		b 1f							; skip over the coalesce operation
 	set [x+proctable_block_start], [a+proctable_block_start]	; copy this block's start to next block's table
 	set a, x							; use next block's table for both blocks
 	set x, [x]							; next is now next's next
 
 1:
 	set b, [a+proctable_block_start]	; start of block being freed
-	set c, y+proctable_block_size		; end of previous block	
+	set c, y
+	add c, proctable_size				; end of previous block	
 	ifn b, c							; if they're not equal
-		set pc, 1f						; don't coalesce
+		b 1f							; don't coalesce
 		
 	set [a+proctable_block_start], [y+proctable_block_start]	; use previous block's start in our table
 	set y, [y+proctable_prev_offset]							; previous block's previous is now previous
@@ -122,7 +123,7 @@ spawn_impl:
 	  b 1f
 	set x, [x]
 	b 1b
-	
+1:
 	
 	sub pc, 1 ; TODO
 	
@@ -131,18 +132,32 @@ spawn_impl:
 ; ------------------
 ; idle process
 ; ------------------
-:idleentry
-	jsr taskswitch
-:idlestack
+idleentry:
+	jsr TaskSwitch
+idlestack:
 	dat idleentry
-:idleproctable
+idleproctable:
 	dat idlestack
 	dat idleproctable
 	dat idleproctable
 	dat idleentry	
 
 ; ------------------
+kernel_end:
+
+; ------------------
 ; bootstrapping
 ; ------------------
-:init
+init:
 	sub pc, 1 ; TODO
+
+
+; ------------------
+; area between kernel_end and 0x8000 is on free list
+; ------------------
+.org (0x8000 - proctable_size)
+freemem_block:
+	dat freelist		; next
+	dat 0x1234			; (unused)
+	dat freelist		; prev
+	dat kernel_end		; block start
