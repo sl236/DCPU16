@@ -103,21 +103,27 @@ Assembler.Grammar =
             })( _m[0], _m[1] );
           }
         ],
-      directive: ["dat | origin | ret | halt | brk | shell"],
+      directive: ["dat | origin | ret | halt | brk | shell | def"],
       
-      basicopname: ["/set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb/ /\\s*/", 
+      basicopname: ["/\\b(set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb)\\b/ /\\s*/", 
             function(_m) { return _m[0]; }],
-      extendedopname: ["/jsr/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; }],
+      extendedopname: ["/\\bjsr\\b/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; }],
       
-      dat: ["/[.]?(dat|dc)/ /\\s*/ data",       function(_m) { return _m[2]; } ],
+      def: ["/[.]?\\bdef\\s+/ identifier expression", function(_m) 
+          { 
+            return Assembler.LabelResolver.labels[_m[1]] = eval(_m[2]); 
+          } 
+      ],
+      
+      dat: ["/[.]?\\b(dat|dc)\\b\\s*/ data",       function(_m) { return _m[1]; } ],
       data: ["datatuple | dataunit" ],
       datatuple: ["dataunit /\\s*,\\s*/ data", function(_m){ return (function(fn0,fn1){return function(){fn0();fn1();}})(_m[0],_m[2]); } ],
       dataunit: ["dataliteral | quotedstring"],
       
-      ret: ["/ret/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
-      halt: ["/halt/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
-      brk: ["/brk/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
-      shell: ["/.shell/ /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
+      ret: ["/\\bret\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x61c1 ); } }],
+      halt: ["/\\bhalt\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x85c3 ); } }],      
+      brk: ["/\\bbrk\\b/", function(){ CountAssembledWords(1); return function() { EmitWord( 0x3F0 ); } }],
+      shell: ["/[.]\\bshell\\b/ /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
       
       dataliteral: ["expression",
                 function(_m){ CountAssembledWords(1); return (function(expr){return function() { EmitWord(eval(expr)); }})(_m[0][0]); }
@@ -172,7 +178,7 @@ Assembler.Grammar =
         function(_m){ CountAssembledWords(1); return (function(_code){return function() { EmitWord(_code); }})(eval('0' + _m[0])); } 
       ],            
       
-      origin: [ "/[.]?(org|origin)/ /\\s*/ expression", function(_m)
+      origin: [ "/[.]?\\b(org|origin)\\b/ /\\s*/ expression", function(_m)
                 { 
                   return (function(expr){
                     SetLabelOrigin(eval(expr));
@@ -191,8 +197,8 @@ Assembler.Grammar =
       labels: ["maybelabels | label" ],
       maybelabels: ["label /\\s*/ labels" ],
       label: ["prefixlabel | postfixlabel" ],
-      prefixlabel: ["':' /[a-zA-Z_][a-zA-Z_0-9]+/ /\\s*/",  function(_m) { EmitLabel(_m[1]); return 0; } ],
-      postfixlabel: ["/[a-zA-Z_][a-zA-Z_0-9]+/ ':' /\\s*/",  function(_m) { EmitLabel(_m[0]); return 0; } ],
+      prefixlabel: ["':' identifier /\\s*/",  function(_m) { EmitLabel(_m[1]); return 0; } ],
+      postfixlabel: ["identifier ':' /\\s*/",  function(_m) { EmitLabel(_m[0]); return 0; } ],
       
       reg_gpr: ["/;[abcxyzijABCXYZIJ]/ /\\s*/",function(_m) 
         { 
@@ -281,9 +287,10 @@ Assembler.Grammar =
       expression:     ["sum"],
       sum:            ["addop | mul"],
       mul:            ["mulop | val"],
-      val:            ["brackets | identifier | number"],
+      val:            ["brackets | resolved_identifier | number"],
       brackets:       ["/\\(\\s*/ expression /\\s*\\)\\s*/", function(_m){ return ['(' + _m[1][0] + ')', _m[1][1] ]; } ],
-      identifier:     ["/[a-zA-Z_][a-zA-Z_0-9]+/ /\\s*/",function(_m){ return ["Assembler.ResolveLabel('" + _m[0] + "')", 1]; }],
+      resolved_identifier:     ["identifier /\\s*/",function(_m){ return ["Assembler.ResolveLabel('" + _m[0] + "')", 1]; }],
+      identifier:     ["/[a-zA-Z_][a-zA-Z_0-9]+/"],
       number:         ["/((0x[0-9a-fA-F]+)|(([0-9]+([.][0-9]+)?)|([.][0-9]+)))/ /\\s*/",function(_m){ return ["("+_m[0]+")", 0]; } ],
       addop:          ["mul /\\s*/ /[-+]/ /\\s*/ sum",   function(_m){ return ["("+_m[0][0]+_m[2]+_m[4][0]+")", _m[0][1]|_m[4][1] ]; } ],
       mulop:          ["val /\\s*/ /[*\\/%]/ /\\s*/ mul",function(_m){ return ["("+_m[0][0]+_m[2]+_m[4][0]+")", _m[0][1]|_m[4][1] ]; } ],
@@ -355,37 +362,91 @@ Assembler.Assemble = function(_text)
   Assembler.BlockAccumulator.blocks = [ ];
   Assembler.LabelResolver.pc = 0;
   Assembler.ErrorState = 0;
+  
+  Assembler.Macros = [ ];
+  Assembler.MacroStarts = [ ];
+  
   var lines = _text.split(/\n/);
+  
+  // preprocessing
+  var cmacro = [];
+  for( var i = 0; i < lines.length; i++ )
+  {
+    var line = lines[i].replace(/;.*$/g, '' ).replace(/[\r\n]/g, ''); // strip comments, strip newline at end
+    line = line.replace(/\b([abcxyzij]|pc|sp|o)\b/ig, ';$&'); // escape register names so they can be differentiated from labels
+    
+    var match = (/^[^;]*[.]?\bmacro\s+([A-Za-z0-9_]+)/i).exec(line);
+    if( match )
+    {
+        cmacro.unshift(match[1]);
+        Assembler.Macros[cmacro[0]] = [ ];
+        Assembler.MacroStarts[cmacro[0]] = i + 1;
+        line = '';
+    }
+    else if( (/^[^;]*[.]?\bendm\b/i).test(line) )
+    {
+        cmacro.shift();
+        line = '';
+    }
+    else if( cmacro.length )
+    {
+        Assembler.Macros[cmacro[0]].push( line );
+        line = '';
+    }
+    lines[i] = line;
+  }
+  
+  var macrore = '';
+  for( var i in Assembler.Macros )
+  {
+    macrore = macrore + '\\b' + i + '\\b|';
+  }
+  macrore = macrore.substring( 0, macrore.length - 1 );
+  macrore = new RegExp( macrore, 'i' );
+  
+  // assemble
   var result = [ ];
   for( var i = 0; i < lines.length; i++ )
   {
     Assembler.CurrLine = i+1;
-    var line = lines[i].replace(/;.*$/g, '' ).replace(/[\r\n]/g, ''); // strip comments, strip newline at end
-    line = line.replace(/\b([abcxyzij]|pc|sp|o)\b/ig, ';$&'); // escape register names so they can be differentiated from labels
-    var r = [];
-    var err = '';
-    try
-    {
-      r = Assembler.Parser.Parse(line);
-    }
-    catch (e)
-    {
-      err = '; javascript exception: ' + e.toString();
-    }
+    var line = lines[i];
+    var macro = macrore.exec( line );
     
-    if( !r[0] )
-    {
-      Assembler.ErrorState = 1;
-      Console.Log( Assembler.CurrLine + ": failed to parse " + lines[i] + err );
-    }
-    
-    if( typeof(r[1]=='function') )
-    {
-      var assemblefn = r[1]();
-      if( typeof(assemblefn) =='function' )
-      {
-        result.push( [ i+1, assemblefn ] );
-      }
+    var toparse = (macro && Assembler.Macros[macro[0]]) ? Assembler.Macros[macro[0]] : [ line ];
+    for( var j = 0; j < toparse.length; j++ )
+    {    
+        var r = [];
+        var err = '';
+        line = toparse[j];
+        
+        try
+        {
+          r = Assembler.Parser.Parse(line);
+        }
+        catch (e)
+        {
+          err = '; javascript exception: ' + e.toString();
+        }
+        
+        if( !r[0] )
+        {
+          Assembler.ErrorState = 1;
+          var err = Assembler.CurrLine;
+          if( macro && Assembler.Macros[macro[0]] )
+          {
+            err = err + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')';
+          }
+          Console.Log( err + ": failed to parse " + line + err );
+        }
+        
+        if( typeof(r[1]=='function') )
+        {
+          var assemblefn = r[1]();
+          if( typeof(assemblefn) =='function' )
+          {
+            result.push( [ i+1, assemblefn ] );
+          }
+        }
     }
   }
   
