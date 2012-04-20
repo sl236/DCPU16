@@ -2,7 +2,7 @@
 ; public API
 ; ------------------
 ; NB. kernel functions may trash any registers except SP (this includes TaskSwitch).
-; Kernel functions will not push data to process stack.
+; Kernel functions may push up to two words of data to process stack.
 ; The range [ScratchArea, KernelTables) is available for application use. 
 ; It is not preserved over TaskSwitch but is preserved over other kernel calls.
 
@@ -18,9 +18,9 @@ def TaskSwitch		0x1f
 	set pc, init
 
 .org KernelTables				; private kernel tables
-freelist: dat freemem_block		; freelist next pointer
+freelist: dat freemem_first	; freelist next pointer
 proclist: dat idleproctable
-          dat freemem_block		; freelist prev pointer
+          dat freemem_last		; freelist prev pointer
 		  dat freelist			; freelist head block start
           		
 ; ------------------
@@ -114,21 +114,110 @@ spawn_impl:
 	and a, ~align						; ensure alignment
 	sub a, (proctable_size-1)			; (size-proctable_size) for a block is one less instruction than size to calculate. Subtract another 1 so we can use ifg
 	set x, freelist						; start from the freelist
-	set z, 0xffff						; best found size
+;	set z, 0xffff						; best found size
+; TODO: always use smallest block that's large enough
 
 1:
 	set y, x							; start of block descriptor
 	sub y, [x + proctable_block_start]	; size of memory available to process
-	ifg y, a
-	  b 1f
-	set x, [x]
-	b 1b
+	ifg y, a							; if it'll fit
+	  b 1f								; bail
+	set x, [x]							; next block
+	b 1b								; loop round
 1:
+	add a, 1							; get actual usable size again
+	set z, y							; grab a copy of block size
+	sub z, a							; compare to requested usable size
+	ifg align, z						; if there's not enough left to be useful
+		b 1f							; don't split the free block, just give the whole thing to the process
 	
-	sub pc, 1 ; TODO
-	
-	
+	set z, x							; clear the free block: grab a copy of the pointer
+	sub z, a							; area we're giving to process
+	sub z, proctable_size				; new free block's table
+	set i, [x]							; next pointer
+	set [z], i							; copy to new block
+	set [i+proctable_prev_offset], z	; new block is next's prev
+	set i, [x+proctable_prev_offset]	; prev ptr
+	set [z+proctable_prev_offset], i	; copy to new block
+	set [i], z							; new block is prev's next
+	sub y, a							; area we're giving to process
+	set [x+proctable_block_start], y	; new process' start
+	sub y, proctable_size				; new free block's size
+	set i, z							; copy free block table ptr
+	sub i, y							; new free block's start
+	set [z+proctable_block_start], i	; store it
+	b 2f								; x now points to new process table
 
+1:
+	set i, [x+proctable_prev_offset]	; prev ptr
+	set j, [x]							; next ptr
+	set [i], j							; prev's next is next
+	set [j+proctable_prev_offset], i	; next's prev is i
+
+; at this point, a memory area of size at least A is available between [x+proctable_block_start] and x
+; we've done a lot of work, we could really do with a task switch before we copy and relocate the binary
+2:
+	set [x], b							; store executable header
+	set push, x							; store block address
+	jsr TaskSwitch						; taskswitch
+	set x, pop							; recover block address
+	set a, [x]							; recover executable header address
+	
+	set i, [a]							; executable size
+	set j, [a+exeheader_exestart]		; executable start
+	
+	set z, sp							; stash a copy of sp
+	set sp, [x+proctable_block_start]	; copy destination
+	
+	add i, sp							; end of executable
+
+; copy executable to block
+1:	; unroll copy four times; we can safely do that because of the alignment restriction, we know the block has enough padding
+	set [j], [sp++]
+	add j, 1
+	set [j], [sp++]
+	add j, 1
+	set [j], [sp++]
+	add j, 1
+	set [j], [sp++]
+	add j, 1
+	ifg i, sp	; is the end still ahead?
+	 	b 1b	; go around
+	
+	set sp, z							; restore sp
+	set push, x							; store block address
+	jsr TaskSwitch						; taskswitch
+	set x, pop							; recover block address
+	set z, sp							; store a copy of sp
+	set a, [x]							; recover executable header address
+	set i, [a+exeheader_exestart]		; executable start
+	add a, 2							; start of relocation table
+	set sp, a							; autoincrementing is so useful
+	set c, [x+proctable_block_start]	; destination start
+1:
+	ife sp, i							; run out of relocations?
+		b 1f							; bail
+	set b, [sp++]						; relocation offset
+	add b, c							; obtain address
+	add [b], c							; relocate what's there
+	b 1b								; go around
+1:
+	set sp, z							; recover sp
+	; copied and relocated process is now held at x. 
+	set [x-1], c						; start of process on its stack
+	set c, x							; process table address is process' initial sp
+	sub c, 1							; simulate one item on stack
+	set [x], c							; store that
+	set a, [proclist]					; next process
+	set b, [a+proctable_prev_offset]	; prev process
+	set [x+proctable_next_offset], a	; store those in our process table
+	set [x+proctable_prev_offset], b	;
+	set [a+proctable_prev_offset], x	; link us in
+	set [b+proctable_next_offset], x	;
+	
+	set pc, TaskSwitch					; done. TaskSwitch will return to caller.
+	
+		
 ; ------------------
 ; idle process
 ; ------------------
@@ -153,11 +242,21 @@ init:
 
 
 ; ------------------
-; area between kernel_end and 0x8000 is on free list
+; freelist
 ; ------------------
+; area between kernel_end and 0x8000 is available
 .org (0x8000 - proctable_size)
-freemem_block:
-	dat freelist		; next
+freemem_first:
+	dat freemem_last	; next
+	dat 0x1234			; (unused)
+	dat freelist		; prev
+	dat kernel_end		; block start
+
+; since the stack is per process, 
+; area between top of memory mapped devices and top of memory is also available
+.org (0-proctable_size)
+freemem_first:
+	dat freemem_last	; next
 	dat 0x1234			; (unused)
 	dat freelist		; prev
 	dat kernel_end		; block start

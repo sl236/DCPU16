@@ -100,8 +100,12 @@
               }
               Console.BeginEdit(function(_text)
               {
-                  Assembler.Assemble(_text);
-                  Assembler.Patch();
+                  if (!Assembler.Assemble(_text))
+                  {
+                      Assembler.Patch();
+                      return 0;
+                  }
+                  return 1;
               });
               Console.inputArea.value = _data ? _data : Assembler.Program;
           }
@@ -497,4 +501,4 @@
 
     }
 
-})();                 // (function(){
+})();                   // (function(){
