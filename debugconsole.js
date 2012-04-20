@@ -332,7 +332,7 @@
         if (!Console.EditCB(Console.inputArea.value))
         {
             $('.editor').hide();
-            Console.inputArea.value = '';
+            Console.inputArea.value = Console.prompt;
             Console.inputArea.rows = 1;
             Console.EditCB = undefined;
         }
@@ -342,7 +342,7 @@
     {
         $('.editor').hide();
         Assembler.Program = Console.inputArea.value;
-        Console.inputArea.value = '';
+        Console.inputArea.value = Console.prompt;
         Console.inputArea.rows = 1;
         Console.EditCB = undefined;
     }
