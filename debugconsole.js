@@ -81,13 +81,13 @@
       }
   },
 
-    pause:
+  pause:
   {
       help: 'pause\nPauses a trace or emulation run.',
       fn: function() { Emulator.paused = true; }
   },
-
-    asm:
+  
+  asm:
   {
       help: 'asm [url]\nSwitch to assembly entry mode, optionally loading source from supplied URL (note browser cross-site scripting policies).',
       fn: function(_args)
@@ -141,7 +141,25 @@
       fn: Emulator.Dump
   },
 
-    patch:
+  disasm:
+  {
+    help: 'disasm [addr] [count]\nDisassemble count instructions from supplied address or pc.',
+    fn: function(_args)
+    {
+      var addr = _args? _args.shift() : undefined;
+      var count = _args? _args.shift() : undefined;
+      if( addr == undefined ) { addr = Emulator.regs[9]; }
+      if( count == undefined ) { count = 4; }
+      for( var i = 0; i < count; i++ )
+      {
+        var r = Emulator.Disassemble(addr);
+        Console.Log( r[0] );
+        addr += r[1];
+      }
+    }
+  },
+
+  patch:
   {
       help: 'patch [addr data [data [data ...]]]\nCopy arbitrary data to memory; no-argument form copies retained assembler data to memory',
       fn: function(_args)

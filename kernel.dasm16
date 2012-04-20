@@ -3,30 +3,43 @@
 ; ------------------
 ; NB. kernel functions may trash any registers except SP (this includes TaskSwitch).
 ; Kernel functions may push up to two words of data to process stack.
-; The range [ScratchArea, KernelTables) is available for application use. 
-; It is not preserved over TaskSwitch but is preserved over other kernel calls.
 
-def Exit			0x00
-def Spawn			0x01
-def ScratchArea		0x14
-def KernelTables	0x18
+def Exit			    0x00
+def Spawn			    0x02
+def Reserved0     0x04
+def Reserved0     0x06
+def Reserved0     0x08
+def Reserved0     0x0A
+def Reserved0     0x0C
+def Reserved0     0x0E
+def KernelTables	0x10
 def TaskSwitch		0x1f
 
-; ------------------
-; initial setup
-.org 0
-	set pc, init
-
-.org KernelTables				; private kernel tables
-freelist: dat freemem_first	; freelist next pointer
-proclist: dat idleproctable
-          dat freemem_last		; freelist prev pointer
-		  dat freelist			; freelist head block start
-          		
 ; ------------------
 ; kernel implementation
 ; ------------------
 
+.org 0
+  set pc, init ; exit_impl
+  set pc, spawn_impl
+  set pc, _crash      ; 0x04
+  set pc, _crash      ; 0x06
+  set pc, _crash      ; 0x08
+  set pc, _crash      ; 0x0A
+  set pc, _crash      ; 0x0C
+  set pc, _crash      ; 0x0E
+  
+.org KernelTables				        ; private kernel tables
+freelist:   dat freemem_first	  ; freelist next pointer
+zeroconst:  dat 0               ; known to always be zero
+            dat freemem_last	  ; freelist prev pointer
+		        dat freelist			  ; freelist head block start
+proclist:   dat initproc_table  ; current process table address
+            dat 0
+            dat 0
+            dat 0
+            dat 0
+          		
 ; proctable format
 def proctable_sp_offset		0
 def proctable_next_offset	1
@@ -36,7 +49,7 @@ def proctable_size			(proctable_block_start+1)
 
 ; executable format
 def exeheader_exesize		0	; executable area word count
-def exeheader_exestart		1	; executable area first word offset
+def exeheader_exestart	1	; executable area first word offset
 ; words from here to exeheader_exestart are relocation offsets
 
 ; 0 - sp
@@ -51,9 +64,11 @@ def exeheader_exestart		1	; executable area first word offset
 ; ----- Assumes return address on stack. Preserves sp, nothing else
 .org TaskSwitch
 taskswitch_impl:
-	set a,   [proclist]	; address of current process table
-	set [a], sp			; store sp
-	set a,   [a+1]		; next process
+  set b, proclist ; current process table address held here
+	set a,   [b]	  ; fetch it
+	set [a], sp			; store sp there
+	set a,   [a+1]	; get next process table
+  set [b], a      ; store it
 	set sp,  [a]		; fetch sp
 	set pc,  pop		; return
 
@@ -100,8 +115,9 @@ exit_impl:
 	set [x+proctable_prev_offset], a	; we are next's prev
 	
 	; done! taskswitch to next process
-	set sp,  [proclist]	; fetch sp
-	set pc,  pop		; return
+  set a, [proclist]   ; next process table
+	set sp,  [a]	      ; fetch its sp
+	set pc,  pop		    ; return there
 		
 ; ----- Spawn	
 ; ----- Allocate A words of memory for a new process. 
@@ -111,10 +127,10 @@ exit_impl:
 def align 32
 spawn_impl:
 	add a, (proctable_size+(align-1))	; add proctable size to memory requested by process, and enough padding for alignment
-	and a, ~align						; ensure alignment
-	sub a, (proctable_size-1)			; (size-proctable_size) for a block is one less instruction than size to calculate. Subtract another 1 so we can use ifg
-	set x, freelist						; start from the freelist
-;	set z, 0xffff						; best found size
+	and a, ~(align-1)       					; ensure alignment
+	sub a, (proctable_size+1)	    		; (size-proctable_size) for a block is one less instruction than size to calculate. Subtract another 1 so we can use ifg
+	set x, freelist						        ; start from the freelist
+;	set z, 0xffff						          ; best found size
 ; TODO: always use smallest block that's large enough
 
 1:
@@ -128,25 +144,27 @@ spawn_impl:
 	add a, 1							; get actual usable size again
 	set z, y							; grab a copy of block size
 	sub z, a							; compare to requested usable size
-	ifg align, z						; if there's not enough left to be useful
-		b 1f							; don't split the free block, just give the whole thing to the process
+	ifg align, z					; if there's not enough left to be useful
+		b 1f							  ; don't split the free block, just give the whole thing to the process
 	
-	set z, x							; clear the free block: grab a copy of the pointer
-	sub z, a							; area we're giving to process
-	sub z, proctable_size				; new free block's table
+	set c, x							  ; clear the free block: grab a copy of the pointer
+	sub c, a							  ; area we're giving to process
+	sub c, proctable_size	  ; new free block's table
+  set i, c                ; grab a copy
+  sub i, z                ; new free block's start
+  set [c+proctable_block_start], i  ; store it
+  
 	set i, [x]							; next pointer
-	set [z], i							; copy to new block
-	set [i+proctable_prev_offset], z	; new block is next's prev
+	set [c], i							; copy to new block
+	set [i+proctable_prev_offset], c	; new block is next's prev
 	set i, [x+proctable_prev_offset]	; prev ptr
-	set [z+proctable_prev_offset], i	; copy to new block
-	set [i], z							; new block is prev's next
-	sub y, a							; area we're giving to process
-	set [x+proctable_block_start], y	; new process' start
-	sub y, proctable_size				; new free block's size
-	set i, z							; copy free block table ptr
-	sub i, y							; new free block's start
-	set [z+proctable_block_start], i	; store it
-	b 2f								; x now points to new process table
+	set [c+proctable_prev_offset], i	; copy to new block
+	set [i], c							; new block is prev's next    
+  
+  add c, proctable_size             ; new process' start
+	set [x+proctable_block_start], c	; store it
+  
+	b 2f								    ; x now points to new process table
 
 1:
 	set i, [x+proctable_prev_offset]	; prev ptr
@@ -164,7 +182,8 @@ spawn_impl:
 	set a, [x]							; recover executable header address
 	
 	set i, [a]							; executable size
-	set j, [a+exeheader_exestart]		; executable start
+	set j, [a+exeheader_exestart]		; executable start offset
+  add j, a                ; executable start
 	
 	set z, sp							; stash a copy of sp
 	set sp, [x+proctable_block_start]	; copy destination
@@ -172,14 +191,8 @@ spawn_impl:
 	add i, sp							; end of executable
 
 ; copy executable to block
-1:	; unroll copy four times; we can safely do that because of the alignment restriction, we know the block has enough padding
-	set [j], [sp++]
-	add j, 1
-	set [j], [sp++]
-	add j, 1
-	set [j], [sp++]
-	add j, 1
-	set [j], [sp++]
+1:
+	set [sp++], [j]
 	add j, 1
 	ifg i, sp	; is the end still ahead?
 	 	b 1b	; go around
@@ -190,55 +203,119 @@ spawn_impl:
 	set x, pop							; recover block address
 	set z, sp							; store a copy of sp
 	set a, [x]							; recover executable header address
-	set i, [a+exeheader_exestart]		; executable start
-	add a, 2							; start of relocation table
-	set sp, a							; autoincrementing is so useful
+	set i, [a+exeheader_exestart]		; executable start offset
+  add i, a                ; executable start address
+	add a, 2		  					; start of relocation table
+	set sp, a			  				; autoincrementing is so useful
 	set c, [x+proctable_block_start]	; destination start
 1:
 	ife sp, i							; run out of relocations?
-		b 1f							; bail
-	set b, [sp++]						; relocation offset
+		b 1f							  ; bail
+	set b, [sp++]					; relocation offset
 	add b, c							; obtain address
-	add [b], c							; relocate what's there
-	b 1b								; go around
+	add [b], c						; relocate what's there
+	b 1b								  ; go around
 1:
 	set sp, z							; recover sp
 	; copied and relocated process is now held at x. 
-	set [x-1], c						; start of process on its stack
-	set c, x							; process table address is process' initial sp
-	sub c, 1							; simulate one item on stack
-	set [x], c							; store that
-	set a, [proclist]					; next process
+  set a, x              ; process table address is process' initial sp
+	sub a, 1							; simulate one item on stack
+	set [a], c					  ; store start of process there
+	set [x], a						; store the stack address
+	set a, [proclist]					        ; next process table address
 	set b, [a+proctable_prev_offset]	; prev process
 	set [x+proctable_next_offset], a	; store those in our process table
 	set [x+proctable_prev_offset], b	;
 	set [a+proctable_prev_offset], x	; link us in
-	set [b+proctable_next_offset], x	;
-	
+	set [b+proctable_next_offset], x	;	
 	set pc, TaskSwitch					; done. TaskSwitch will return to caller.
-	
+
+; ------------------
+; crash handler
+; ------------------
+
+_crash:
+  sub pc, 1
 		
 ; ------------------
 ; idle process
 ; ------------------
-idleentry:
-	jsr TaskSwitch
-idlestack:
-	dat idleentry
-idleproctable:
-	dat idlestack
-	dat idleproctable
-	dat idleproctable
-	dat idleentry	
+idleproc_entry:
+	set push, idleproc_entry
+  set pc, TaskSwitch
 
+idleproc_sp:
+  dat idleproc_entry
+  
+idleproc_table:
+  dat idleproc_sp       ; sp
+  dat initproc_table    ; next
+  dat initproc_table    ; prev
+  dat idleproc_entry    ; block start
+
+; ------------------
+; boot process
+; ------------------
+
+init:
+  set [Exit+1], exit_impl
+  set a, 0x1000
+  set b, shell_header
+  set sp, init_stack
+  set pc, Spawn
+  
+  dat 0, 0, 0, 0
+init_stack:
+  dat 0
+  
+shell_header:
+  dat shell_end - shell_entry
+  dat 2
+
+shell_entry:
+  set a, 0x8000
+  set b, 0x2000
+  set c, message
+  
+1:
+  set x, [c]
+  ife x, 0
+    b 1f
+  bor x, b
+  set [a], x
+  add a, 1
+  add c, 1
+  b 1b
+
+1:
+  sub pc, 1 ; TODO
+
+message:
+  dat "Hello world!", 0
+shell_end:
+
+initproc_table:
+  dat 0                 ; stored sp
+  dat idleproc_table    ; next
+  dat idleproc_table    ; prev
+  dat init              ; block start
+  
 ; ------------------
 kernel_end:
+; ------------------
 
 ; ------------------
-; bootstrapping
+; Memory-mapped HW
 ; ------------------
-init:
-	sub pc, 1 ; TODO
+
+def hw_vram      0x8000
+def hw_chars     0x8180
+def hw_vram_end  0x8200
+
+def hw_keyboard       0x9000
+def hw_keyboard_end   0x9010
+
+def hw_end  0xA000
 
 
 ; ------------------
@@ -248,15 +325,15 @@ init:
 .org (0x8000 - proctable_size)
 freemem_first:
 	dat freemem_last	; next
-	dat 0x1234			; (unused)
-	dat freelist		; prev
+	dat 0x1234			  ; (unused)
+	dat freelist		  ; prev
 	dat kernel_end		; block start
 
 ; since the stack is per process, 
 ; area between top of memory mapped devices and top of memory is also available
 .org (0-proctable_size)
-freemem_first:
-	dat freemem_last	; next
-	dat 0x1234			; (unused)
-	dat freelist		; prev
-	dat kernel_end		; block start
+freemem_last:
+	dat freelist   	  ; next
+	dat 0x1234			  ; (unused)
+	dat freemem_first	; prev
+	dat hw_end    		; block start

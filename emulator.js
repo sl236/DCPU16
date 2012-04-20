@@ -271,12 +271,26 @@
             result += ' ' + a[0] + ', ' + b[0];
             if (size > 0)
             {
-                result += ' ;  ';
+                result += ' ; ';
                 for (var i = 0; i < size; i++)
                 {
-                    result += Console.H16(_addr + i + 1) + ': ' + Console.H16(Emulator.mem[_addr + i + 1]) + '  ';
+                    result += '$' + Console.H16(Emulator.mem[_addr + i + 1]) + ' ';
                 }
             }
+        }
+        
+        if( Assembler.Lines 
+            && Assembler.MemMap 
+            && Assembler.MemMap[_addr] 
+            && Assembler.Lines[ Assembler.MemMap[_addr]-1 ]
+        )
+        {
+          while( result.length < 56 )
+          {
+            result = result + ' ';
+          }
+          result += '; ' + Assembler.MemMap[_addr] + ': ';
+          result += Assembler.Lines[ Assembler.MemMap[ _addr ]-1 ].replace(/\t/g, ' ').substr( 0, 130 - result.length );
         }
 
         return [result, size + 1];

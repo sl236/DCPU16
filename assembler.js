@@ -7,7 +7,6 @@
 (function()
 {
 
-
     // ---------
     // Assembler
     // ---------
@@ -29,6 +28,7 @@
 
     function CountAssembledWords(_words)
     {
+        Assembler.MemMap[Assembler.LabelResolver.pc] = Assembler.CurrLineNumber;
         Assembler.LabelResolver.pc += _words;
     }
 
@@ -318,11 +318,11 @@
           function(_m) { return (function(id) { return function() { return id + 0x8; } })('abcxyzij'.indexOf(_m[1].charAt(1).toLowerCase())); } ],
 
         regindoffset: ["regindoffsetleft | regindoffsetright"],
-        regindoffsetleft: ["/\\[\\s*/ expression /\\s*\\+\\s*/ /;[abcxyzij]/ /\\s*\\]/",
+        regindoffsetleft: ["/\\[\\s*/ expression /\\s*/ /[+-]/ /\\s*/ /;[abcxyzij]/ /\\s*\\]/",
           function(_m)
           {
-              var expr = _m[1][0];
-              var id = 'abcxyzij'.indexOf(_m[3].charAt(1).toLowerCase());
+              var expr = _m[3]+'('+_m[1][0]+')';
+              var id = 'abcxyzij'.indexOf(_m[5].charAt(1).toLowerCase());
               CountAssembledWords(1);
               return (function(i, e)
               {
@@ -334,10 +334,10 @@
               })(id, expr);
           }
         ],
-        regindoffsetright: ["/\\[\\s*/ /;[abcxyzijABCXYZIJ]/ /\\s*\\+\\s*/ expression /\\s*\\]/",
+        regindoffsetright: ["/\\[\\s*/ /;[abcxyzijABCXYZIJ]/ /\\s*/ /[+-]/ /\\s*/ expression /\\s*\\]/",
           function(_m)
           {
-              var expr = _m[3][0];
+              var expr = _m[3] + '(' + _m[5][0] + ')';
               var id = 'abcxyzij'.indexOf(_m[1].charAt(1).toLowerCase());
               CountAssembledWords(1);
               return (function(i, e)
@@ -429,13 +429,6 @@
     Assembler.Parser = new Parser(Assembler.Grammar);
 
     // -----------------------
-    Assembler.Reset = function()
-    {
-        Assembler.BlockAccumulator = { blocks: [], origin: 0, block: [] };
-        Assembler.LabelResolver = { labels: [], pc: 0 };
-    }
-
-    // -----------------------
     Assembler.Patch = function()
     {
         Console.Log("Writing assembled blocks to memory");
@@ -472,6 +465,8 @@
         Assembler.MacroStarts = [];
 
         var lines = _text.split(/\n/);
+        Assembler.Lines = _text.split(/\n/);
+        Assembler.MemMap = [];
 
         // preprocessing
         var cmacro = [];
@@ -514,6 +509,7 @@
         for (var i = 0; i < lines.length; i++)
         {
             Assembler.CurrLine = (function(_i) { return function() { return _i + 1; }; })(i);
+            Assembler.CurrLineNumber = i+1;
             var line = lines[i];
             var macro = macrore.exec(line);
 
@@ -525,11 +521,11 @@
                 line = toparse[j];
 
                 Assembler.CurrLine = (function(_str) { return function() { return _str; } })
-        (
-            (macro && Assembler.Macros[macro[0]]) ?
-                ((i + 1) + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')')
-               : (i + 1)
-        );
+                (
+                    (macro && Assembler.Macros[macro[0]]) ?
+                        ((i + 1) + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')')
+                       : (i + 1)
+                );
 
                 try
                 {
@@ -554,7 +550,7 @@
                         var assemblefn = r[1]();
                         if (typeof (assemblefn) == 'function')
                         {
-                            result.push([Assembler.CurrLine, assemblefn]);
+                            result.push([Assembler.CurrLine, assemblefn, Assembler.CurrLineNumber]);
                         }
                     }
                 }
@@ -572,6 +568,7 @@
         for (var i = 0; i < result.length; i++)
         {
             Assembler.CurrLine = result[i][0];
+            Assembler.CurrLineNumber = result[i][2];
             result[i][1]();
         }
         BeginNewBlock(0);
@@ -581,6 +578,7 @@
             Assembler.Status();
         }
 
+        Assembler.CurrLineNumber = undefined;
         Assembler.CurrLine = undefined;
         return Assembler.ErrorState;
     }
