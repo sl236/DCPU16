@@ -468,7 +468,8 @@
         Assembler.Lines = _text.split(/\n/);
         Assembler.MemMap = [];
         
-        macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?(?:(_[A-Za-z0-9_]+)\\s*,?\\s*)+[)]?)?', 'i');
+        // so, I decided to use regular expressions to solve the problem of macro parsing...
+        macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
 
         // preprocessing
         var cmacro = [];
@@ -481,9 +482,18 @@
             if (match)
             {
                 var conv = [match[1]];
-                for( var j = 2; j < match.length; j++ )
+                var params = [];
+                if( match.length > 1 )
                 {
-                  conv.push( new RegExp( '\\b' + match[j] + '\\b', 'g' ) );
+                  var spl = match[2].split(','); // ...about here I'm realising I now have two problems.
+                  for( var j = 0; j < spl.length; j++ )
+                  {
+                    params.push( ((/^\s*\b(_[A-Za-z0-9_]+)\b\s*/).exec(spl[j]))[1] );
+                  }
+                }
+                for( var j = 0; j < params.length; j++ )
+                {
+                  conv.push( new RegExp( '\\b' + params[j] + '\\b', 'g' ) );
                 }
                 cmacro.unshift(conv);
                 Assembler.Macros[cmacro[0][0]] = cmacro;
@@ -510,12 +520,13 @@
           var mparam = Assembler.Macros[mdesc][0];
           if( mparam.length > 1 )
           {
-            macrore += '[(]?';
+            // please just make it stop
+            macrore += '[(]?(';
             for( var j = 1; j < mparam.length; j++ )
             {
-              macrore += '\\s*([^,()]+)\\s*,';
+              macrore += '\\s*[^,()]+\\s*,'; // just kill me now
             }
-            macrore = macrore.substring(0, macrore.length - 1) + '[)]?';
+            macrore = macrore.substring(0, macrore.length - 1) + ')[)]?';
           }
           macrore +=  ')|';
         }
@@ -530,9 +541,22 @@
             Assembler.CurrLineNumber = i+1;
             var toparse = [ lines[i] ];
             var macro = macrore.exec(toparse[0]);
-            if( macro ) { macro.shift(); }
+            if( macro ) 
+            { 
+              macro.shift(); 
+              while( macro.length && ( macro[0] == undefined ) )
+              {
+                macro.shift(); // for the love of all that is good, WHY DID YOU SPEC THAT? Why?
+              }
+            }
             if( macro && Assembler.Macros[macro[0]] )
             {
+              var parambodies = [];
+              if( macro.length > 0 )
+              {
+                parambodies = macro[1].split(',');
+              }
+              
               toparse.pop();
               var source = Assembler.Macros[macro[0]];
               var sourcedesc = source[0];
@@ -541,13 +565,13 @@
                 var sourceline = source[j];
                 for( var k = 1; k < sourcedesc.length; k++ )
                 {
-                  if( k >= macro.length )
+                  if( k > parambodies.length )
                   {
                     Console.Log( Assembler.CurrLine() + ": Not enough parameters supplied for macro invocation." );
                     Assembler.ErrorState = 1;
-                    macro[k] = '';
+                    parambodies[k-1] = '';
                   }                
-                  sourceline = sourceline.replace( sourcedesc[k], macro[k] );
+                  sourceline = sourceline.replace( sourcedesc[k], parambodies[k-1] );
                 }
                 toparse.push( sourceline );
               }
@@ -573,6 +597,7 @@
 
                 try
                 {
+                    // you know what? Let's just use a good old-fashioned parser like I should have done
                     r = Assembler.Parser.Parse(line);
                 }
                 catch (e)
