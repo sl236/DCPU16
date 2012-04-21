@@ -273,24 +273,38 @@ shell_header:
   dat 2
 
 shell_entry:
-  set a, 0x8000
+  set a, shell_message
   set b, 0x2000
-  set c, message
+  jsr shell_print
+  
+  jsr TaskSwitch
+  sub pc, 1 ; TODO
+  
+shell_print:        ; a = string, b = colour
+  set c, sp
+  set sp, shell_cursor
+  set x, [a]
+
+1:
+  ife x, 0
+    b 1f            ; bail
+  ife 0x0d, x
+    b 2f            ; newline
+  bor x, b
+  set [push], x
+  add a, 1
+  b 1b
+2:  ; newline
+  sub pc, 1 ; TODO  
   
 1:
-  set x, [c]
-  ife x, 0
-    b 1f
-  bor x, b
-  set [a], x
-  add a, 1
-  add c, 1
-  b 1b
+  set sp, c
+  set pc, pop
 
-1:
-  sub pc, 1 ; TODO
+shell_cursor:
+  dat 0x8000
 
-message:
+shell_message:
   dat "Hello world!", 0
 shell_end:
 

@@ -467,6 +467,8 @@
         var lines = _text.split(/\n/);
         Assembler.Lines = _text.split(/\n/);
         Assembler.MemMap = [];
+        
+        macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?(?:(_[A-Za-z0-9_]+)\\s*,?\\s*)+[)]?)?', 'i');
 
         // preprocessing
         var cmacro = [];
@@ -475,31 +477,47 @@
             var line = lines[i].replace(/;.*$/g, '').replace(/[\r\n]/g, ''); // strip comments, strip newline at end
             line = line.replace(/\b([abcxyzij]|pc|sp|o)\b/ig, ';$&'); // escape register names so they can be differentiated from labels
 
-            var match = (/^[^;]*[.]?\bmacro\s+([A-Za-z0-9_]+)/i).exec(line);
+            var match = (macroregexp).exec(line);
             if (match)
             {
-                cmacro.unshift(match[1]);
-                Assembler.Macros[cmacro[0]] = [];
-                Assembler.MacroStarts[cmacro[0]] = i + 1;
+                var conv = [match[1]];
+                for( var j = 2; j < match.length; j++ )
+                {
+                  conv.push( new RegExp( '\\b' + match[j] + '\\b', 'g' ) );
+                }
+                cmacro.unshift(conv);
+                Assembler.Macros[cmacro[0][0]] = cmacro;
+                Assembler.MacroStarts[cmacro[0][0]] = i + 1;
                 line = '';
             }
             else if ((/^[^;]*[.]?\bendm\b/i).test(line))
             {
-                cmacro.shift();
+                cmacro = [];
                 line = '';
             }
             else if (cmacro.length)
             {
-                Assembler.Macros[cmacro[0]].push(line);
+                Assembler.Macros[cmacro[0][0]].push(line);
                 line = '';
             }
             lines[i] = line;
         }
 
         var macrore = '';
-        for (var i in Assembler.Macros)
-        {
-            macrore = macrore + '\\b' + i + '\\b|';
+        for (var mdesc in Assembler.Macros)
+        {          
+          macrore += '(?:\\b(' + mdesc + ')\\b\\s*';
+          var mparam = Assembler.Macros[mdesc][0];
+          if( mparam.length > 1 )
+          {
+            macrore += '[(]?';
+            for( var j = 1; j < mparam.length; j++ )
+            {
+              macrore += '\\s*([^,()]+)\\s*,';
+            }
+            macrore = macrore.substring(0, macrore.length - 1) + '[)]?';
+          }
+          macrore +=  ')|';
         }
         macrore = macrore.substring(0, macrore.length - 1);
         macrore = new RegExp(macrore, 'i');
@@ -510,10 +528,35 @@
         {
             Assembler.CurrLine = (function(_i) { return function() { return _i + 1; }; })(i);
             Assembler.CurrLineNumber = i+1;
-            var line = lines[i];
-            var macro = macrore.exec(line);
+            var toparse = [ lines[i] ];
+            var macro = macrore.exec(toparse[0]);
+            if( macro ) { macro.shift(); }
+            if( macro && Assembler.Macros[macro[0]] )
+            {
+              toparse.pop();
+              var source = Assembler.Macros[macro[0]];
+              var sourcedesc = source[0];
+              for( var j = 1; j < source.length; j++ )
+              {                
+                var sourceline = source[j];
+                for( var k = 1; k < sourcedesc.length; k++ )
+                {
+                  if( k >= macro.length )
+                  {
+                    Console.Log( Assembler.CurrLine() + ": Not enough parameters supplied for macro invocation." );
+                    Assembler.ErrorState = 1;
+                    macro[k] = '';
+                  }                
+                  sourceline = sourceline.replace( sourcedesc[k], macro[k] );
+                }
+                toparse.push( sourceline );
+              }
+            }
+            else
+            {
+              macro = null;
+            }
 
-            var toparse = (macro && Assembler.Macros[macro[0]]) ? Assembler.Macros[macro[0]] : [line];
             for (var j = 0; j < toparse.length; j++)
             {
                 var r = [];
@@ -522,9 +565,10 @@
 
                 Assembler.CurrLine = (function(_str) { return function() { return _str; } })
                 (
-                    (macro && Assembler.Macros[macro[0]]) ?
+                    macro ?
                         ((i + 1) + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')')
                        : (i + 1)
+                    
                 );
 
                 try
