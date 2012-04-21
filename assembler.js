@@ -351,7 +351,9 @@
           }
         ],
 
-        expression: ["sum", function(_m) { return ['(((' + _m[0][0] + ')>>>0)&0xffff)', _m[0][1]]; } ],
+        expression: ["bool", function(_m) { return ['(((' + _m[0][0] + ')>>>0)&0xffff)', _m[0][1]]; } ],
+        bool: ["boolop | shift"],
+        shift: ["shiftop | sum"],
         sum: ["addop | mul"],
         mul: ["mulop | unaryop"],
         unaryop: ["invert | negate | val"],
@@ -394,10 +396,14 @@
       ],
         identifier: ["/[a-zA-Z_][a-zA-Z_0-9]+/ /\\s*/", function(_m) { return _m[0]; } ],
         number: ["/((0x[0-9a-fA-F]+)|(([0-9]+([.][0-9]+)?)|([.][0-9]+)))/ /\\s*/", function(_m) { return ["(" + _m[0] + ")", 0]; } ],
+        boolop: ["shift /\\s*/ booloperator /\\s*/ bool", function(_m) { return ["(" + _m[0][0] + _m[2] + _m[4][0] + ")", _m[0][1] | _m[4][1]]; } ],
+        shiftop: ["sum /\\s*/ shiftoperator /\\s*/ shift", function(_m) { return ["(" + _m[0][0] + _m[2] + _m[4][0] + ")", _m[0][1] | _m[4][1]]; } ],
         addop: ["mul /\\s*/ /[-+]/ /\\s*/ sum", function(_m) { return ["(" + _m[0][0] + _m[2] + _m[4][0] + ")", _m[0][1] | _m[4][1]]; } ],
         mulop: ["val /\\s*/ /[*\\/%]/ /\\s*/ mul", function(_m) { return ["(" + _m[0][0] + _m[2] + _m[4][0] + ")", _m[0][1] | _m[4][1]]; } ],
         invert: ["'~' expression", function(_m) { return ["((~(" + _m[1][0] + "))>>>0)", _m[1][1]]; } ],
-        negate: ["'-' expression", function(_m) { return ["(-(" + _m[1][0] + "))", _m[1][1]]; } ]
+        negate: ["'-' expression", function(_m) { return ["(-(" + _m[1][0] + "))", _m[1][1]]; } ],
+        shiftoperator: ["'<<' | '>>'"],
+        booloperator: ["'&' | '^' | '|'"]
     };
 
     Assembler.BlockAccumulator =
