@@ -282,16 +282,16 @@ shell_entry:
   
 shell_print:        ; a = string, b = colour
   set c, sp
-  set sp, shell_cursor
-  set x, [a]
+  set sp, [shell_cursor]
 
 1:
-  ife x, 0
+  set x, [a]
+  ife x, 0x00
     b 1f            ; bail
-  ife 0x0d, x
+  ife x, 0x0d
     b 2f            ; newline
   bor x, b
-  set [push], x
+  set [sp++], x
   add a, 1
   b 1b
 2:  ; newline
