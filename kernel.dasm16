@@ -32,8 +32,8 @@ def TaskSwitch		0x1f
 ; ------------------
   
 .org KernelTables				        ; private kernel tables
-freelist:   dat freemem_first	  ; freelist next pointer
-            dat freemem_last	  ; freelist prev pointer
+freelist:   dat freemem     	  ; freelist next pointer
+            dat freemem     	  ; freelist prev pointer
 proclist:   dat initproc_table  ; current process table address
 		        dat freelist			  ; freelist head block start
           		
@@ -198,13 +198,65 @@ fork_impl:
   set pc, pop         ; we're done
 
 ; ------------------
-; crash handler
+; utility functions
 ; ------------------
 
-_crash:
+; places hex representation of A into four words starting at B
+; leaves C and Z trashed, A zeroed
+format_hex: 
+  set z, sp       ; stash a copy of the stack pointer
+  set sp, b       ; we'll use it to generate the string
+  add sp, 4       ; start at the least significant digit
+ 
+1: 
+  set C, A
+  and C, 0xF
+  add C, '0'
+  ifg C, '9'
+    add C, (('A' - '9')-1)
+  set [--sp], C
+  shr a, 4
+  ifn sp, b
+    b 1b
+  
+  set sp, z
+  set pc, pop
+
+;  copies null-terminated string at A to B, orring C with each character. Trashes X.
+strcpy:
+1:
+  set X, [A]
+  ife X, 0
+    set pc, pop
+    
+  bor X, C
+  set [B], X
+  add A, 1
+  add B, 1
+  b 1b
+
+; ------------------
+; crash handlers
+; ------------------
+
 out_of_memory:
-  sub pc, 1       ; TODO
-		
+    set A, oom_message
+    set B, 0x8000
+    set C, 0xC000
+    set push, _crash_terminate
+    set pc, strcpy
+_crash:
+    set B, 0x8000
+    set C, 0xC000
+_crash_terminate:
+    set A, crash_message
+    jsr strcpy    
+    set push Exit
+    set pc, strcpy
+
+oom_message: "Out of memory.", 0
+crash_message: dat "Process terminated:", 0, 0, 0, 0, 0
+  		
 ; ------------------
 ; idle process
 ; ------------------
@@ -271,40 +323,6 @@ init:
   jsr strcpy
   
   b 1b
-
-; places hex representation of A into four words starting at B
-; leaves C and Z trashed, A zeroed
-format_hex: 
-  set z, sp       ; stash a copy of the stack pointer
-  set sp, b       ; we'll use it to generate the string
-  add sp, 4       ; start at the least significant digit
- 
-1: 
-  set C, A
-  and C, 0xF
-  add C, '0'
-  ifg C, '9'
-    add C, (('A' - '9')-1)
-  set [--sp], C
-  shr a, 4
-  ifn sp, b
-    b 1b
-  
-  set sp, z
-  set pc, pop
-
-;  copies null-terminated string at A to B, orring C with each character. Trashes X.
-strcpy:
-1:
-  set X, [A]
-  ife X, 0
-    set pc, pop
-    
-  bor X, C
-  set [B], X
-  add A, 1
-  add B, 1
-  b 1b
     
 
 message:
@@ -343,17 +361,11 @@ def hw_end  0xA000
 ; ------------------
 ; area between kernel_end and 0x8000 is available
 .org (0x8000 - kerntable_size)
-freemem_first:
-	dat freemem_last	; next
-	dat 0x1234			  ; (unused)
+freemem:
+	dat freelist    	; next
 	dat freelist		  ; prev
-	dat kernel_end		; block start
-
-; since the stack is per process, 
-; area between top of memory mapped devices and top of memory is also available
-.org (0-kerntable_size)
-freemem_last:
-	dat freelist   	  ; next
 	dat 0x1234			  ; (unused)
-	dat freemem_first	; prev
-	dat hw_end    		; block start
+	dat kernel_end		; block start
+ 
+; NB. Notch's emulator loads 0x10000 *chars*, 
+; so we have no way of specifying memory content beyond 0x8000 statically
