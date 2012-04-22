@@ -224,6 +224,26 @@
     // -------------
     // Keyboard
     // -------------    
+    function KeyLog(_charcode, _code, _up, _stored )
+    {
+      var str = Console.H16( _charcode ) + " ('" + String.fromCharCode(_charcode) + "')";
+      switch(_up)
+      {
+          case 0:
+            str += " typed; ";
+          break;
+          case 1:
+            str += " pressed; ";
+          break;
+          case 2:
+            str += " released; ";
+          break;
+      }
+      str += (_code ? Console.H16(_code) : "nothing");
+      str += _stored ? " sent to " + Console.H16(_stored) : " stored in emulator (ringbuffer full)."
+      Console.Log(str);
+    }
+    
     Emulator.onReset = (function(_oldFn)
     {
         return function()
@@ -234,46 +254,46 @@
             var last = 0x9000;
 
             var shiftmap = [];
-            var shifted = '¬!"£$%^&*()_+QWERTYUIOP{}ASDFGHJKL:@~|ZXCVBNM<>/';
-            var unshifted = '`1234567890-=qwertyuiop[]asdfghjkl;\'#\\zxcvbnm,./';
+            var shifted = 'QWERTYUIOPASDFGHJKLZXCVBNM';
+            var unshifted = 'qwertyuiopasdfghjklzxcvbnm';
 
 
             var screen = document.getElementById('screen');
             if (screen)
             {
-                function handleKeyboard(e)
+                function handleKeyboard(e, _etype)
                 {
-                    var scancode = e.keyCode;
-                    var charcode = scancode;
-                    if ((scancode >= 16) && (scancode <= 18))
+                    var charcode = e.charCode || e.keyCode;
+
+                    if (e.ctrlKey && ((charcode | 0x20) >= 0x61) && ((charcode | 0x20) <= 0x7a))
                     {
-                        return;
+                        charcode = (charcode | 0x20) - 0x61;
                     }
-
-                    if (e.ctrlKey && ((scancode | 0x20) >= 0x61) && ((scancode | 0x20) <= 0x7a))
+                    
+                    var code = charcode;
+                    if( _etype )
                     {
-                        scancode = (scancode | 0x20) - 0x61;
+                      if(Console.Keymap[charcode] == undefined)
+                      {
+                        return true;
+                      }
+                      code = Console.Keymap[charcode] | ((_etype == 1) ? 0x100 : 0);
                     }
-
-                    var idx = (e.shiftKey ? unshifted : shifted).indexOf(String.fromCharCode(scancode));
-                    if (idx > -1)
+                    else
                     {
-                        charcode = (e.shiftKey ? shifted : unshifted).charCodeAt(idx);
+                      if( (!e.charCode) && Console.Keymap[e.keyCode] )
+                      {
+                        return false;
+                      }
                     }
-
-                    var code = (Console.Keymap[charcode] != undefined) ?
-                            Console.Keymap[charcode] : charcode;
-
+                            
                     if (Emulator.mem[last])
                     {
                         if (code)
                         {
                             buffer.push[code];
                         }
-                        if (Console.Options['keylog'])
-                        {
-                            Console.Log(charcode + " pressed; " + (code ? code : "nothing") + " stored in emulator (ringbuffer full). ");
-                        }
+                        if( Console.Options['keylog'] ) {  KeyLog( charcode, code, _etype, 0 ); }
                     }
                     else
                     {
@@ -281,10 +301,7 @@
                         {
                             Emulator.mem[last] = code;
                         }
-                        if (Console.Options['keylog'])
-                        {
-                            Console.Log(charcode + " pressed; " + (code ? code : "nothing") + " written to " + last);
-                        }
+                        if( Console.Options['keylog'] ) { KeyLog( charcode, code, _etype, last ); }
                         last = Console.Options.keyringbuffer ? (last + 1) & 0x900F : 0x9000;
                     }
                     return !code;

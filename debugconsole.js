@@ -398,8 +398,13 @@
         currHistory: 0,
         currText: '',
 
-        handleKeyDown: function(e)
+        handleKeyDown: function(e, _etype)
         {
+          if( _etype != 1 )
+          {
+            return true;
+          }
+          
             switch (e.keyCode)
             {
                 case 38:
@@ -445,15 +450,15 @@
 
     Console.prompt = 'Emulator command area. Type help for help.';
 
-    Console.HandleKeyDown = function(e)
+    Console.HandleKeyEvent = function(e, _up)
     {
         if (!Console.EditCB)
         {
-            return TerminalControl.handleKeyDown(e);
+            return TerminalControl.handleKeyDown(e, _up);
         }
         return true;
     }
-    var KeyboardFocus = Console.HandleKeyDown;
+    var KeyboardFocus = Console.HandleKeyEvent;
 
     Console.SetKeyboardFocus = function(_callback)
     {
@@ -464,7 +469,7 @@
         else
         {
             if (Console.inputArea.value == Console.prompt) { Console.inputArea.value = ''; }
-            KeyboardFocus = Console.HandleKeyDown;
+            KeyboardFocus = Console.HandleKeyEvent;
         }
     }
 
@@ -506,9 +511,19 @@
 
         Emulator.Reset();
 
+        document.onkeypress = function(e)
+        {
+            return KeyboardFocus(e, 0);
+        }
+
         document.onkeydown = function(e)
         {
-            return KeyboardFocus(e);
+            return KeyboardFocus(e, 1);
+        }
+
+        document.onkeyup = function(e)
+        {
+            return KeyboardFocus(e, 2);
         }
 
         var m = (/shell=([^&]+)/i).exec(window.location);

@@ -11,11 +11,10 @@ var Console =
     inputArea: 0,
     Keymap: 
     {
-        0x0d: 0x0a,
-        0x25: 0x01,
-        0x27: 0x02,
-        0x26: 0x03,
-        0x28: 0x04
+        37: 130,
+        38: 128,
+        39: 131,
+        40: 129
     },
     Options: { keyptr: 0, keyringbuffer: 1 }
 };
