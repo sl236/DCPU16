@@ -225,49 +225,100 @@ idleproc_table:
 ; boot process
 ; ------------------
 
+init_start:
+  .org init_start + 0x20      ; reserve some memory
+
 init:
-  set sp, initproc_table
-  set X, 0x100
-  jsr Fork
+  set sp, initproc_table      ; at boot, the stack pointer was not set up for us
+  set X, 0x100                ; ask for a small amount of memory for the new process
+  jsr Fork                    ; fork
   
   set A, message
   set B, hw_vram
   set C, 0xC000
-  ife sp, initproc_table
+  ife sp, initproc_table      ; original process?
     b 1f
-  add B, 32
-  set C, 0x2000
-  set A, message2
+    
+  add B, 32                   ; second process writes a line down
+  set C, 0x2000               ; uses a different colour
+  set A, message2             ; and has a different message
+
+1:
+  set i, b                    ; both processes share this code
+  add i, 16                   ; subsequent writes will be halfway across the screen  
+  set push, i                 ; store that on the stack
+  set push, c                 ; also the colour
+
+  set j, [proclist]           ; process table address
+  set j, [j+kerntable_block_start]  ; current process' memory
+  set [j+5], 0                ; we'll be writing four character strings there, and want them null-terminated
+  set push, j                 ; store that to avoid recalculating
+  set push, 0                 ; and make a counter as well
   
+  jsr strcpy                  ; display the static message
+  
+1:  
+  jsr TaskSwitch              ; taskswitch
+  set i, sp                   ; copy the stack pointer so we can use register indirect addressing
+  set a, [i]                  ; fetch the counter
+  add a, 1                    ; increment it
+  set [i], a                  ; store it back
+  set b, [i+1]                ; this process's local buffer
+  jsr format_hex
+  set a, [i+1]
+  set b, [i+3]
+  set c, [i+2]
+  jsr strcpy
+  
+  b 1b
+
+; places hex representation of A into four words starting at B
+; leaves C and Z trashed, A zeroed
+format_hex: 
+  set z, sp       ; stash a copy of the stack pointer
+  set sp, b       ; we'll use it to generate the string
+  add sp, 4       ; start at the least significant digit
+ 
+1: 
+  set C, A
+  and C, 0xF
+  add C, '0'
+  ifg C, '9'
+    add C, (('A' - '9')-1)
+  set [--sp], C
+  shr a, 4
+  ifn sp, b
+    b 1b
+  
+  set sp, z
+  set pc, pop
+
+;  copies null-terminated string at A to B, orring C with each character. Trashes X.
+strcpy:
 1:
-  b 2f
-1:
+  set X, [A]
+  ife X, 0
+    set pc, pop
+    
   bor X, C
   set [B], X
   add A, 1
   add B, 1
-   
-2:
-  set X, [A]
-  ifn X, 0
-    b 1b
- 
-1:
-  jsr TaskSwitch ; TODO
   b 1b
+    
 
 message:
   dat "Hello world!", 0
 message2:
   dat "Process 2", 0
-end:
 
   dat 0, 0, 0, 0, 0, 0, 0, 0 ; some stack space
+  dat 0, 0, 0, 0, 0, 0, 0, 0 ; some more
 initproc_table:
   dat idleproc_table    ; next
   dat idleproc_table    ; prev
   dat initproc_table    ; no stack
-  dat init              ; block start
+  dat init_start        ; block start
   
 ; ------------------
 kernel_end:

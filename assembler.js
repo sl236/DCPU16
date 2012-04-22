@@ -185,14 +185,19 @@
         doublequotedstring: ['/"/ quotedstringdata /"\\s*/', function(_m) { return _m[1]; } ],
         quotedstringdata: ["quotedstringtuple | quotedstringunit"],
         quotedstringtuple: ["quotedstringunit quotedstringdata", function(_m) { return (function(fn0, fn1) { return function() { fn0(); fn1(); } })(_m[0], _m[1]); } ],
-        quotedstringunit: ["stringchar | escape"],
-        stringchar: ["/[^\"'\\\\]/", function(_m) { CountAssembledWords(1); return (function(_code) { return function() { EmitWord(_code); } })(_m[0].charCodeAt(0)); } ],
+        quotedstringunit: ["stringchar | escape",
+          function(_m) 
+          { 
+            CountAssembledWords(1);
+            return (function(_code){ return function(){ EmitWord(_code);} })(_m[0]); 
+          }        
+        ],
+        stringchar: ["/[^\"'\\\\]/", function(_m) { return _m[0].charCodeAt(0); } ],
         escape: ["'\\\\' escapecode", function(_m) { return _m[1]; } ],
         escapecode: ["numericescape | onecharescape"],
         onecharescape: ["/./",
         function(_m)
         {
-            CountAssembledWords(1);
             var code = _m[0].charCodeAt(0);
             switch (_m[0]) // http://msdn.microsoft.com/en-us/library/h21280bw%28v=vs.80%29.aspx
             {
@@ -218,17 +223,13 @@
                     code = 11;
                     break;
             }
-            return (function(_code)
-            {
-                return function() { EmitWord(_code); }
-            }
-            )(_m[0].charCodeAt(0));
+            return code;
         }
       ],
 
         numericescape: ["/(([0][0-7][0-7][0-7])|([x][0-9a-fA-F][0-9a-fA-F]([0-9a-fA-F][0-9a-fA-F])?))/",
-        function(_m) { CountAssembledWords(1); return (function(_code) { return function() { EmitWord(_code); } })(eval('0' + _m[0])); }
-      ],
+            function(_m) { return eval('0' + _m[0]); }
+          ],
 
         origin: ["/[.]?\\b(org|origin)\\b/ /\\s*/ expression", function(_m)
         {
@@ -357,7 +358,7 @@
         sum: ["addop | mul"],
         mul: ["mulop | unaryop"],
         unaryop: ["invert | negate | val"],
-        val: ["brackets | resolved_identifier | resolved_numericlabel | number"],
+        val: ["brackets | resolved_identifier | resolved_numericlabel | quoted_char_literal | number"],
         brackets: ["/\\(\\s*/ expression /\\s*\\)\\s*/", function(_m) { return ['(' + _m[1][0] + ')', _m[1][1]]; } ],
         resolved_identifier: ["identifier", function(_m)
         {
@@ -394,6 +395,8 @@
             return ["Assembler.ResolveLabel('" + lbl + "')", 1];
         }
       ],
+        quoted_char_literal: ["/'/ quoted_char_code /'/", function(_m) { return [_m[1], 0]; } ],
+        quoted_char_code: ["stringchar | escape"],
         identifier: ["/[a-zA-Z_][a-zA-Z_0-9]+/ /\\s*/", function(_m) { return _m[0]; } ],
         number: ["/((0x[0-9a-fA-F]+)|(([0-9]+([.][0-9]+)?)|([.][0-9]+)))/ /\\s*/", function(_m) { return ["(" + _m[0] + ")", 0]; } ],
         boolop: ["shift /\\s*/ booloperator /\\s*/ bool", function(_m) { return ["(" + _m[0][0] + _m[2] + _m[4][0] + ")", _m[0][1] | _m[4][1]]; } ],
@@ -482,7 +485,40 @@
         for (var i = 0; i < lines.length; i++)
         {
             var line = lines[i].replace(/;.*$/g, '').replace(/[\r\n]/g, ''); // strip comments, strip newline at end
-            line = line.replace(/\b([abcxyzij]|pc|sp|o)\b/ig, ';$&'); // escape register names so they can be differentiated from labels
+            
+            // we need to escape names so they can be differentiated from labels, but not in quoted strings
+            // split the line into quoted and nonquoted sections
+            var tokens = [];
+            var currtoken = '';
+
+            for( var j = 0; j < line.length; j++ )
+            {
+              switch(line[j])
+              {
+                case '"':
+                case "'":
+                    if(tokens.length & 1)
+                    {
+                      tokens.push(currtoken + line[j]);
+                      currtoken = '';
+                    }
+                    else
+                    {
+                      tokens.push(currtoken);
+                      currtoken = line[j];
+                    }
+                  break;
+                default:
+                    currtoken += line[j];
+                  break;
+              }
+            }
+            tokens.push(currtoken);
+            for( var j = 0; j < tokens.length; j+=2 )
+            {
+              tokens[j] = tokens[j].replace(/\b([abcxyzij]|pc|sp|o)\b(?!['])/ig, ';$&'); 
+            }
+            line = tokens.join(''); 
 
             var match = (macroregexp).exec(line);
             if (match)
