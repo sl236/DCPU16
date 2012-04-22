@@ -32,8 +32,8 @@ def TaskSwitch		0x1f
 ; ------------------
   
 .org KernelTables				        ; private kernel tables
-freelist:   dat freemem     	  ; freelist next pointer
-            dat freemem     	  ; freelist prev pointer
+freelist:   dat freemem_first	  ; freelist next pointer
+            dat freemem_last	  ; freelist prev pointer
 proclist:   dat initproc_table  ; current process table address
 		        dat freelist			  ; freelist head block start
           		
@@ -361,11 +361,17 @@ def hw_end  0xA000
 ; ------------------
 ; area between kernel_end and 0x8000 is available
 .org (0x8000 - kerntable_size)
-freemem:
-	dat freelist    	; next
-	dat freelist		  ; prev
+freemem_first:
+	dat freemem_last	; next
 	dat 0x1234			  ; (unused)
+	dat freelist		  ; prev
 	dat kernel_end		; block start
- 
-; NB. Notch's emulator loads 0x10000 *chars*, 
-; so we have no way of specifying memory content beyond 0x8000 statically
+
+; since the stack is per process, 
+; area between top of memory mapped devices and top of memory is also available
+.org (0-kerntable_size)
+freemem_last:
+	dat freelist   	  ; next
+	dat 0x1234			  ; (unused)
+	dat freemem_first	; prev
+	dat hw_end    		; block start
