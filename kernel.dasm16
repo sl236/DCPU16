@@ -4,16 +4,16 @@
 ; NB. kernel functions may trash any registers except SP (this includes TaskSwitch).
 ; Kernel functions may push up to two words of data to process stack.
 
-def Exit			    0x00
-def Fork			    0x02
-def ReadChar		    0x04
-def Reserved0     0x06
-def Reserved0     0x08
-def Reserved0     0x0A
-def Reserved0     0x0C
-def Reserved0     0x0E
-def KernelTables	0x10
-def TaskSwitch		0x1f
+def Exit			    0x00	; exit current process
+def Fork			    0x02	; spawn a new process
+def ReadChar		    0x04	; line input to be written in terms of this, its code held in the process that uses it
+def Print				0x06	; writes to the process's screen area, if any, respecting control codes and boundaries
+def Reserved			0x08	; provisionally block device read
+def Reserved			0x0A	; provisionally block device write
+def Reserved			0x0C	; provisionally extensions (function code in A)
+def Reserved			0x0E	; provisionally device enumeration, mapping
+def KernelTables		0x10
+def TaskSwitch			0x1f
 
 ; ------------------
 ; kernel implementation
@@ -23,7 +23,7 @@ def TaskSwitch		0x1f
   set pc, init ; exit_impl
   set pc, fork_impl
   set pc, readch_impl
-  set pc, _crash      ; 0x06
+  set pc, print_impl
   set pc, _crash      ; 0x08
   set pc, _crash      ; 0x0A
   set pc, _crash      ; 0x0C
@@ -34,32 +34,34 @@ def TaskSwitch		0x1f
 .org KernelTables				  ; private kernel tables
 freelist:		dat freemem_first	  ; freelist next pointer
 				dat freemem_last	  ; freelist prev pointer
-proclist:		dat initproc_table	  ; current process table address
 				dat freelist		  ; freelist head block start
+proclist:		dat initproc_table	  ; current process table address
+				dat 0
           		
 ; kernel table format
 def kerntable_next    		0
 def kerntable_prev      	1
-def kerntable_data      	2
-def kerntable_block_start	3
-def kerntable_size			(kerntable_block_start+1)
+def kerntable_block_start	2
+def kerntable_saved_sp     	3
+def kerntable_screen_area	4
+def kerntable_size			(kerntable_screen_area+1)
 
 ; blocks of memory are defined as [ptr+kerntable_block_start] .. (ptr+kerntable_size)
-; for process tables, kerntable_data holds the stack pointer 
+; for process tables, kerntable_saved_sp holds the stack pointer 
 ; and when a process is not executing, the top of its stack holds its next pc
-; for free blocks, kerntable_data is unused and undefined
+; for free blocks, kerntable_saved_sp is unused and undefined
 ; a process's stack base is the start of its process table
 
 ; ----- TaskSwitch (0x1f)
 ; ----- Assumes return address on stack. Preserves sp, nothing else
 .org TaskSwitch
 taskswitch_impl:
-  set b, proclist                 ; current process table address held here
-	set a,   [b]	                  ; fetch it
-	set [a+kerntable_data], sp			; store sp there
-	set a,   [a]	                  ; get next process table
-	set [b], a                      ; store it
-	set sp,  [a+kerntable_data]		  ; fetch sp
+	set b,	 proclist					; current process table address held here
+	set a,   [b]						; fetch it
+	set [a+kerntable_saved_sp], sp		; store sp there
+	set a,   [a]						; get next process table
+	set [b], a							; store it
+	set sp,  [a+kerntable_saved_sp]		; fetch sp
 	set pc,  pop		                ; resume process
 
 ; remove item at X from doubly linked list (and make it form its own valid dll with only itself on it)
@@ -128,7 +130,7 @@ exit_impl:
 	
 	; done! taskswitch to next process
   set a,    [proclist]				; next process table
-  set sp,   [a + kerntable_data]	; fetch its sp
+  set sp,   [a + kerntable_saved_sp]	; fetch its sp
   set pc,   pop						; return there
 		
 ; ----- Fork
@@ -186,7 +188,7 @@ fork_impl:
   sub A, SP           ; and ends at SP, so get its size
   set B, X            ; new stack starts at the new process table
   sub B, A            ; and ends the same distance away as the old
-  set [X+kerntable_data], B ; store that in the new process table while we have it
+  set [X+kerntable_saved_sp], B ; store that in the new process table while we have it
   
 1:
   set [B], [SP++]     ; copy over next word
@@ -200,7 +202,7 @@ fork_impl:
   set pc, pop         ; we're done
 
 ; ------------------
-; utility functions
+; internal utility functions, subject to change
 ; ------------------
 
 ; places hex representation of A into four words starting at B
@@ -283,8 +285,8 @@ readch_impl:
 		set [readch_process], x		; it's waiting for a key
 		jsr dll_delete				; so it's not in the list of active processes
 		set push, 1b				; we'll want to go back to the character read when we resume
-		set [x+kerntable_data], sp	; store our SP
-		set sp,  [z+kerntable_data] ; fetch next process's SP
+		set [x+kerntable_saved_sp], sp	; store our SP
+		set sp,  [z+kerntable_saved_sp] ; fetch next process's SP
 		set pc,  pop		        ; and resume that
 
 1:		; we got a key!
@@ -299,9 +301,24 @@ readch_process:
 
 readch_keyptr:
 		dat 0x9000
-				
+
+; ------------------
+; Print
+; A is a pointer to a null-terminated string. B is colour information to be orred in to each word.
+; The string is processed using information held in the process's screen area descriptor. 
+; No operation is performed if the process has no descriptor.
+; ------------------
+def screenarea_cursor_offset	0		; first word holds the address characters will next be written to
+def screenarea_width			1		; width, in words, of printable area
+def screenarea_pitch			2		; distance in words to same column on next displayed row
+def screenarea_height			3		; height, in columns,
+
+print_impl:
+	sub pc, 1	; TODO
+	
 ; ------------------
 ; idle process
+; handles I/O polling, waking up processes stalled on I/O
 ; ------------------
 idleproc_entry:
 	set x, [readch_process]		; anything listening for keyboard events?
@@ -324,8 +341,9 @@ idleproc_sp:
 idleproc_table:
   dat initproc_table    ; next
   dat initproc_table    ; prev
-  dat idleproc_sp       ; sp
   dat idleproc_entry    ; block start
+  dat idleproc_sp       ; sp
+  dat 0					; owned screen area
 
 ; ------------------
 ; boot process
@@ -414,8 +432,9 @@ message2:
 initproc_table:
   dat idleproc_table    ; next
   dat idleproc_table    ; prev
-  dat initproc_table    ; no stack
   dat init_start        ; block start
+  dat initproc_table    ; no stack
+  dat 0					; no owned screen area
   
 ; ------------------
 kernel_end:
@@ -443,8 +462,9 @@ def hw_end  0xA000
 freemem_first:
 	dat freemem_last	; next
 	dat freelist		; prev
-	dat 0x1234			; (unused)
 	dat kernel_end		; block start
+	dat 0x1234			; (unused)
+	dat 0x5678			; (unused)
 
 ; since the stack is per process, 
 ; area between top of memory mapped devices and top of memory is also available
@@ -452,5 +472,6 @@ freemem_first:
 freemem_last:
 	dat freelist   		; next
 	dat freemem_first	; prev
-	dat 0x1234			; (unused)
 	dat hw_end    		; block start
+	dat 0x1234			; (unused)
+	dat 0x5678			; (unused)
