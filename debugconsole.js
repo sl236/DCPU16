@@ -150,6 +150,8 @@
       var count = _args? _args.shift() : undefined;
       if( addr == undefined ) { addr = Emulator.regs[9]; }
       if( count == undefined ) { count = 4; }
+      addr |= 0;
+      count |= 0;
       for( var i = 0; i < count; i++ )
       {
         var r = Emulator.Disassemble(addr);
