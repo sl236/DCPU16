@@ -44,13 +44,15 @@ load('assembler.js');
 
     Console.ReadFile = function(_file, _callback)
     {
-        if (runCommand("test", "-e", _file) == 0)
+        var file = Wrapper.Path + _file;
+        if (runCommand("test", "-e", file) == 0)
         {
-            _callback(readFile(_file));
+            _callback(readFile(file));
         }
         else
         {
-            Console.Log("Could not find " + _file);        
+            Console.Log("Could not find " + file);
+            _callback('');
         }
     }
 
@@ -133,8 +135,17 @@ load('assembler.js');
 
     if (Wrapper.Arguments.length)
     {
-        print("Assembling " + Wrapper.Arguments[0]);
-        var source = readFile(Wrapper.Arguments[0]);
+        var file = Wrapper.Arguments[0];
+        Wrapper.Path = './';
+        var m = file.match(/^(.+[\\\/])([^\\\/]+)$/);
+        if (m && m[1] && m[2])
+        {
+            Wrapper.Path = m[1];
+            file = m[2];
+        }
+
+        print("Assembling " + Wrapper.Path + file);
+        var source = readFile(Wrapper.Path + file);
         var haveErrors = Assembler.Assemble(source);
 
         while (!haveErrors && Wrapper.timeout)

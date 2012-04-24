@@ -460,7 +460,7 @@
     }
 
     // -----------------------
-    Assembler.IncludeRegexp = new RegExp('^\\s*[.]?include\\s*["]([^"]+)["]', 'i');
+    Assembler.IncludeRegexp = new RegExp('^\\s*[.]?include\\s*["]([^"]+)["]', 'im');
     Assembler.Assemble = function(_text)
     {
         Assembler.BlockAccumulator.blocks = [];

@@ -1,0 +1,70 @@
+; ---- Utility functions
+
+; ------------------
+; Doubly linked list management
+; ------------------
+
+; ---- dll_delete
+; remove item at X from doubly linked list (and make it form its own valid dll with only itself on it)
+; trashes A, B
+dll_delete:
+  set a, [x]                   ; next
+  set b, [x+kerntable_prev]    ; prev
+  set [a+kerntable_prev], b    ; prev now next's prev
+  set [b], a				   ; next now prev's next
+  set [x], x				   ; fix up curr node's next
+  set [x+kerntable_prev], x    ; and prev
+  set pc, pop				   ; done
+
+; ---- dll_splice
+; splice dll X between Y and Y's prev (new list will go ... Y's prev, X ... X's prev, Y )   Y'<->X<-...->X'<->Y
+; trashes b, returns Y's prev in a
+dll_splice:
+  set a, [y+1]    ; Y's prev
+  set [a], x      ; Y's prev's next now X
+  set b, [x+1]    ; X's prev
+  set [x+1], a    ; X's prev now Y's prev
+  set [b], y      ; X's prev's next now Y     
+  set [y+1], b    ; Y's prev now X's prev  
+  set pc, pop     ; done  
+
+
+; ------------------
+; String manipulation
+; ------------------
+
+; ---- format_hex
+; places hex representation of A into four words starting at B
+; leaves C and Z trashed, A zeroed
+format_hex: 
+  set z, sp       ; stash a copy of the stack pointer
+  set sp, b       ; we'll use it to generate the string
+  add sp, 4       ; start at the least significant digit
+ 
+1: 
+  set C, A
+  and C, 0xF
+  add C, '0'
+  ifg C, '9'
+    add C, (('A' - '9')-1)
+  set [--sp], C
+  shr a, 4
+  ifn sp, b
+    b 1b
+  
+  set sp, z
+  set pc, pop
+
+; ---- strcpy
+;  copies null-terminated string at A to B, orring C with each character. Trashes X.
+strcpy:
+1:
+  set X, [A]
+  ife X, 0
+    set pc, pop
+    
+  bor X, C
+  set [B], X
+  add A, 1
+  add B, 1
+  b 1b

@@ -1,0 +1,38 @@
+; ------------------
+; MoonOS main
+; this pulls in the kernel and init files in the correct order to create an image, and describes the remaining free memory
+; ------------------
+
+include "globals.dasm16"
+include "kernel.dasm16"
+include "utility.dasm16"
+include "idleproc.dasm16"
+include "init.dasm16"
+
+; ------------------
+; Private kernel data area
+; ------------------
+freelist:		dat freemem_first	  ; freelist next pointer
+				dat freemem_last	  ; freelist prev pointer
+				dat freelist		  ; freelist head block start
+				dat 0, 0			  ; reserved
+								
+kernel_end:
+
+; ------------------
+; freelist
+; ------------------
+; area between kernel_end and 0x8000 is available
+.org (0x8000 - kerntable_size)
+freemem_first:
+	dat freemem_last	; next
+	dat freelist		; prev
+	dat kernel_end		; block start
+
+; since the stack is per process, 
+; area between top of memory mapped devices and top of memory is also available
+.org (0-kerntable_size)
+freemem_last:
+	dat freelist   		; next
+	dat freemem_first	; prev
+	dat hw_end    		; block start

@@ -1,0 +1,91 @@
+; ------------------
+; boot process
+; ------------------
+
+init_start:
+  .org init_start + 0x20      ; reserve some memory
+
+init:
+  set [1], exit_impl		  ; the jump at location 0 needs to go to the Exit implementation
+  set sp, initproc_table      ; at boot, the stack pointer was not set up for us
+  set X, 0x100                ; ask for a small amount of memory for the new process
+  jsr Fork                    ; fork
+  
+  ifn sp, initproc_table	  ; if we're the new process
+	b 1f					  ; skip over the next bit
+
+  set X, 0x100				  ; more memory
+  jsr Fork                    ; fork again
+
+  ifn sp, initproc_table	  ; if we're the new process
+	set pc, keyboard_test	  ; we're doing the keyboard test
+  
+1:
+  
+  set A, message
+  set B, hw_vram
+  set C, 0xC000
+  ife sp, initproc_table      ; original process?
+    b 1f
+    
+  add B, 32                   ; second process writes a line down
+  set C, 0x2000               ; uses a different colour
+  set A, message2             ; and has a different message
+
+1:
+  set i, b                    ; both processes share this code
+  add i, 16                   ; subsequent writes will be halfway across the screen  
+  set push, i                 ; store that on the stack
+  set push, c                 ; also the colour
+
+  set j, [proclist]           ; process table address
+  set j, [j+kerntable_block_start]  ; current process' memory
+  set [j+5], 0                ; we'll be writing four character strings there, and want them null-terminated
+  set push, j                 ; store that to avoid recalculating
+  set push, 0                 ; and make a counter as well
+  
+  jsr strcpy                  ; display the static message
+  
+1:  
+  jsr TaskSwitch              ; taskswitch
+  set i, sp                   ; copy the stack pointer so we can use register indirect addressing
+  set a, [i]                  ; fetch the counter
+  add a, 1                    ; increment it
+  set [i], a                  ; store it back
+  set b, [i+1]                ; this process's local buffer
+  jsr format_hex
+  set a, [i+1]
+  set b, [i+3]
+  set c, [i+2]
+  jsr strcpy
+  
+  b 1b
+
+keyboard_test:
+  set push, 0x8000 + 32*6		; halway down the screen
+1:
+  jsr TaskSwitch				; yield
+  jsr ReadChar					; read a character, politely
+  set b, pop					; current cursor pos
+  bor a, 0x7000					; make char visible
+  set [b], a					; write it to screen
+  add b, 1						; advance cursor
+  ifg b, 0x8180					; bottom of screen?
+	set b, 0x8000 + 32*6		; loop
+  set push, b					; stash cursor pos
+  b 1b							; go around
+
+message:
+  dat "Hello world!", 0
+message2:
+  dat "Process 2", 0
+
+  dat 0, 0, 0, 0, 0, 0, 0, 0 ; some stack space
+  dat 0, 0, 0, 0, 0, 0, 0, 0 ; some more
+initproc_table:
+  dat idleproc_table    ; next
+  dat idleproc_table    ; prev
+  dat init_start        ; block start
+  dat initproc_table    ; no stack
+  dat 0					; no owned screen area
+

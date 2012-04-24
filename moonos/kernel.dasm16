@@ -1,0 +1,195 @@
+; ------------------
+; kernel implementation
+; ------------------
+
+; ----- Exit
+; ----- Exits current process, releasing its memory and removing it from the task list
+exit_impl:
+  set x, [proclist]	  ; [proclist] is current process (to be deleted)
+  set z, [x]          ; next process
+  set [proclist], z   ; will be current when we're done
+  jsr dll_delete      ; remove from the process list
+  
+  set y, freelist     ; head of freelist
+1:
+  set y, [y]          ; next free block
+  ife y, freelist     ; have we come back to the start?
+    b 1f              ; then X should be last in the list; bail
+  ifg x, y            ; if's still before X
+    b 1b              ; keep looking
+1:
+
+  jsr dll_splice      ; insert X here
+  
+  ; if a+kerntable_size == x, we should coalesce them
+  ; likewise if x+kerntable_size == Y, we should coalesce those
+
+  set c, x                ; take a copy of x
+  set b, a                ; copy a
+  add b, kerntable_size   ; add kerntable_size
+  ifn b, x                ; if it's not equal to x
+    b 1f                  ; don't coalesce
+  
+  set [x+kerntable_block_start], [a+kerntable_block_start]  ; the new block starts where a used to
+  set x, a                ; now we can remove a from the freelist
+  jsr dll_delete          ; so do that
+  set x, c                ; put x back for next operation
+    
+1:
+  add c, kerntable_size   ; c still holds a copy of x
+  ifn c, y                ; if that's not equal to y
+    b 1f                  ; don't coalesce
+  
+  set [y+kerntable_block_start], [x+kerntable_block_start]  ; Y now starts where X used to
+  jsr dll_delete          ; and we can remove x from the list
+1:    
+	
+	; done! taskswitch to next process
+  set a,    [proclist]				; next process table
+  set sp,   [a + kerntable_saved_sp]	; fetch its sp
+  set pc,   pop						; return there
+		
+; ----- Fork
+; ----- Allocate X words of memory for a new process.
+; ----- New process will have at least X words available between start of its process space and SP, but may have more.
+; ----- Old process's stack will be copied to new process space.
+; ----- Execution will resume in old process space for both processes, however the new process' SP will point to the new stack
+
+def align 16
+fork_impl:
+  set A, [proclist]       ; current process' table
+  sub A, SP               ; area required for current stack
+  add A, (align-1)        ; align to a sensible size: pad
+  and A, ~(align-1)       ; and mask
+  ifg A, X                ; if the result is more than caller asked for
+    set X, A              ; use that instead so we don't crash
+
+  set A, freelist         ; freelist head
+
+1:
+  set A, [A]              ; next block
+  ife A, freelist         ; if we're back at the head
+    set pc, out_of_memory ; then not much we can do
+  set B, A                ; grab a copy
+  sub B, [A + kerntable_block_start]  ; work out how big the block is
+  ifg X, B                ; if we need more memory
+    b 1b                  ; go around
+        
+  set C, B                ; we know B>=X
+  sub C, X                ; so this is always >=0
+  set B, A                ; block start
+  sub B, X                ; new process wants to start here    
+  ifg (align+4), C        ; block too small to split?
+    b 1f                  ; give the caller the whole thing
+  
+  set C, B                      ; new process start
+  sub C, kerntable_size         ; new free block can live here
+  set [C], A													; block detached: its next points to the old block
+  set Z, [A+kerntable_prev]										; (fetch old block's prev)
+  set [C+kerntable_prev], Z										; and its prev to the old block's prev
+  set [A+kerntable_prev], C										; the old block's prev points to the new block
+  set [Z], C													; as does the old block's prev's next
+  set [C+kerntable_block_start], [A+kerntable_block_start]		; the new block starts where the old block used to
+  set [A+kerntable_block_start], B								; and that starts where the new one ends
+  
+1:
+  ; whatever happened, A currently holds a suitable block for the new process
+  ; that block is still in the freelist right now so let's detach it
+  set X, A            ; copy block start to X
+  jsr dll_delete      ; remove it from the freelist
+  
+  ; now we need to copy the stack over  
+  set Z, SP           ; copy SP somewhere safe
+  set A, [proclist]   ; stack starts at the process table
+  sub A, SP           ; and ends at SP, so get its size
+  set B, X            ; new stack starts at the new process table
+  sub B, A            ; and ends the same distance away as the old
+  set [X+kerntable_saved_sp], B ; store that in the new process table while we have it
+  
+1:
+  set [B], [SP++]     ; copy over next word
+  add B, 1            ; move on
+  ifn B, X            ; if we've not hit the process table
+    b 1b              ; go around
+  
+  set SP, Z           ; restore our stack pointer  
+  set Y, [proclist]   ; current process table address
+  jsr dll_splice      ; add the new process to the process list
+  set pc, pop         ; we're done
+  
+; ------------------
+; ReadChar
+; Returns event code in A. 
+; May trash all regs except SP, blocks calling process until there is an event.
+; One listener may listen cheaply, if multiple processes are trying to listen for keyboard events this is an error condition
+; the system will not crash but performance will degrade (and events will be arbitrarily divided between processes, natch)
+; ------------------		
+readch_impl:
+1:
+		ife [readch_process], 0		; nothing else is listening for keys
+			b 1f
+		jsr TaskSwitch				; gonna have to busywait.
+		b 1b						; try again
+1:
+		set b, [readch_keyptr]		; current key pointer
+		set a, [b]					; anything for us?
+		ifn a, 0					; if so,
+			b 1f					; bail
+		set x, [proclist]			; current process
+		set z, [x]					; next process
+		set [proclist], z			; is now the next process
+		set [readch_process], x		; it's waiting for a key
+		jsr dll_delete				; so it's not in the list of active processes
+		set push, 1b				; we'll want to go back to the character read when we resume
+		set [x+kerntable_saved_sp], sp	; store our SP
+		set sp,  [z+kerntable_saved_sp] ; fetch next process's SP
+		set pc,  pop		        ; and resume that
+
+1:		; we got a key!
+		set [b], 0					; acknowledge it
+		add b, 1					; increment keypointer
+		and b, 0x900f				; keep it in the correct range
+		set [readch_keyptr], b		; write it back
+		set pc, pop					; return to caller
+
+readch_process:	
+		dat 0		; this process is suspended, waiting for a key event
+
+readch_keyptr:
+		dat 0x9000
+
+; ------------------
+; Print
+; A is a pointer to a null-terminated string. B is colour information to be orred in to each word.
+; The string is processed using information held in the process's screen area descriptor. 
+; No operation is performed if the process has no descriptor.
+; ------------------
+def screenarea_cursor_offset	0		; first word holds the address characters will next be written to
+def screenarea_width			1		; width, in words, of printable area
+def screenarea_pitch			2		; distance in words to same column on next displayed row
+def screenarea_height			3		; height, in columns,
+
+print_impl:
+	sub pc, 1	; TODO
+
+; ------------------
+; crash handlers
+; ------------------
+
+out_of_memory:
+    set A, oom_message
+    set B, 0x8000
+    set C, 0xC000
+    set push, _crash_terminate
+    set pc, strcpy
+_crash:
+    set B, 0x8000
+    set C, 0xC000
+_crash_terminate:
+    set A, crash_message
+    jsr strcpy    
+    set push Exit
+    set pc, strcpy
+
+oom_message: "Out of memory.", 0
+crash_message: dat "Process terminated:", 0, 0, 0, 0, 0
