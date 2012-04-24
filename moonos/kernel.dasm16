@@ -104,7 +104,8 @@ fork_impl:
   sub A, SP           ; and ends at SP, so get its size
   set B, X            ; new stack starts at the new process table
   sub B, A            ; and ends the same distance away as the old
-  set [X+kerntable_saved_sp], B ; store that in the new process table while we have it
+  set [X+kerntable_saved_sp], B		; store that in the new process table while we have it
+  set [X+kerntable_screen_area], 0	; new process does not initially control a screen area
   
 1:
   set [B], [SP++]     ; copy over next word
@@ -163,14 +164,67 @@ readch_keyptr:
 ; A is a pointer to a null-terminated string. B is colour information to be orred in to each word.
 ; The string is processed using information held in the process's screen area descriptor. 
 ; No operation is performed if the process has no descriptor.
+; Characters 0..31 are interpreted as control characters.
 ; ------------------
-def screenarea_cursor_offset	0		; first word holds the address characters will next be written to
-def screenarea_width			1		; width, in words, of printable area
-def screenarea_pitch			2		; distance in words to same column on next displayed row
-def screenarea_height			3		; height, in columns,
-
 print_impl:
-	sub pc, 1	; TODO
+	set x, [CurrentProcess]				; current process table
+	set x, [x + kerntable_screen_area]	; pointer to process screen area
+	ife x, 0							; don't have one?
+		set pc, pop						; well, we can't print then, can we?
+				
+	set j, [x + screenarea_flags]		; fetch flags 
+	and j, 3							; scroll behaviour
+	set y, [x+screenarea_line_offset]	; start of current line
+	add y, [x+screenarea_width]			; end of current line
+	set push, x							; screen area descriptor
+	set push, y							; end of current line
+	set push, j							; store the scroll behaviour
+	set push, b							; keep our inputs on the stack, we'll be doing lots of stuff that could trash them
+	set push, a							;
+	set z, sp							; keep a copy of sp
+	set sp, [x]							; screen area pointer
+	
+	b print_main_loop					; can jump right in
+
+1:	; main loop (following long operation)
+	jsr TaskSwitch						; taskswitch
+	sub z, sp							; store a copy of the stack pointer
+	set a, pop							; restore locals
+	set b, pop
+	set j, pop
+	set y, pop
+	set x, pop
+	set sp, [x]							; screen area pointer
+
+print_main_loop: ; main loop (locals in abij)
+	set c, [a]							; fetch next character
+	add a, 1							; increment character address
+	ifg 0x20, c							; control character?
+		set pc, [print_handle_control+c]; handle it
+	ife sp, y							; end of line?
+		b print_handle_eol				; handle that
+	bor c, b							; or in colour
+	set [sp++], c						; copy the character
+	b print_main_loop					; go around
+		
+print_handle_eol:	; end of line handling
+	sub pc, 1
+
+
+print_exit:		; function exit
+	add sp, 5							; done with our locals
+	set pc, TaskSwitch					; TaskSwitch can handle returning to caller
+	
+; control character handling
+print_handle_control:
+	dat print_exit,	print_main_loop, print_main_loop, print_main_loop			; 0x04
+	dat print_main_loop, print_main_loop, print_main_loop, print_main_loop		; 0x08
+	dat print_main_loop, print_main_loop, print_main_loop, print_main_loop		; 0x0C
+	dat print_main_loop, print_main_loop, print_main_loop, print_main_loop		; 0x10
+	dat print_main_loop, print_main_loop, print_main_loop, print_main_loop		; 0x14
+	dat print_main_loop, print_main_loop, print_main_loop, print_main_loop		; 0x18
+	dat print_main_loop, print_main_loop, print_main_loop, print_main_loop		; 0x1c
+	dat print_main_loop, print_main_loop, print_main_loop, print_main_loop		; 0x20
 
 ; ------------------
 ; crash handlers

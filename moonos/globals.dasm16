@@ -2,7 +2,7 @@
 ; public API
 ; ------------------
 ; NB. Unless otherwise documented, kernel functions may trash any registers except SP (this includes TaskSwitch).
-; Kernel functions may push up to two words of data to process stack.
+; Kernel functions may push up to eight words of data to process stack.
 
 def Exit			    0x00	; exit current process
 def Fork			    0x02	; spawn a new process
@@ -13,7 +13,7 @@ def Reserved			0x0A	; provisionally block device write
 def Reserved			0x0C	; provisionally extensions (function code in A)
 def Reserved			0x0E	; provisionally device enumeration, mapping
 
-def CurrentProcess		0x1e	; always points to current process's process table
+def CurrentProcess		0x1e	; contents of this location always points to current process's process table
 def TaskSwitch			0x1f	; call this regularly
 
 ; ------------------
@@ -25,6 +25,23 @@ def kerntable_block_start	2
 def kerntable_saved_sp     	3
 def kerntable_screen_area	4
 def kerntable_size			(kerntable_screen_area+1)
+
+; ------------------
+; screen area descriptor format
+; ------------------
+def screenarea_cursor_offset	0		; first word holds the address characters will next be written to
+def screenarea_line_offset		1		; address of start of current line
+def screenarea_topleft_offset	2		; address of top left of printable area
+def screenarea_width			3		; width, in words, of printable area
+def screenarea_pitch			4		; distance in words to same column on next displayed row
+def screenarea_height			5		; height, in columns, of printable area
+def screenarea_flags			6		; flags to control printable area behaviour
+def screenarea_descriptor_size  (screenarea_flags+1)
+
+; screenarea_scroll_behaviour (screenarea_flags bits 0..1). Controls behaviour when printing off the bottom screenarea row.
+def screenarea_scroll_behaviour_hide	(0)		; silently drop characters
+def screenarea_scroll_behaviour_scroll	(1)		; screen area scrolls up, first line lost
+def screenarea_scroll_behaviour_wrap	(2)		; cursor wraps back to the top of screen area, printing continues from there
 
 ; ------------------
 ; Memory-mapped HW
