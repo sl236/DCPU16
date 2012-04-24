@@ -484,7 +484,7 @@
         var cmacro = [];
         for (var i = 0; i < lines.length; i++)
         {
-            var line = lines[i].replace(/;.*$/g, '').replace(/[\r\n]/g, ''); // strip comments, strip newline at end
+            var line = lines[i].replace(/[\r\n]+/g, '').replace(/;.*$/g, ''); // strip comments, strip newline at end            
             
             // we need to escape names so they can be differentiated from labels, but not in quoted strings
             // split the line into quoted and nonquoted sections

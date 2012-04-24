@@ -12,11 +12,18 @@ var Wrapper =
   Arguments: arguments
 };
 
+var window =
+{
+
+};
+
 load('globals.js');
 load('parser.js');
 load('assembler.js');
 
 (function(){
+
+window.Console = Console;
 
 for( var i = 0; i < 0x10000; i++ )
 {
