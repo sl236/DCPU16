@@ -81,13 +81,13 @@
       }
   },
 
-  pause:
+    pause:
   {
       help: 'pause\nPauses a trace or emulation run.',
       fn: function() { Emulator.paused = true; }
   },
-  
-  asm:
+
+    asm:
   {
       help: 'asm [url]\nSwitch to assembly entry mode, optionally loading source from supplied URL (note browser cross-site scripting policies).',
       fn: function(_args)
@@ -102,7 +102,10 @@
               {
                   if (!Assembler.Assemble(_text))
                   {
-                      Assembler.Patch();
+                      if (Assembler.BlockAccumulator.blocks.length)
+                      {
+                          Assembler.Patch();                      
+                      }
                       return 0;
                   }
                   return 1;
@@ -112,11 +115,11 @@
 
           if (_args.length)
           {
-              $.ajax({
-                  url: _args.join(' '),
-                  dataType: 'text',
-                  success: function(data) { go(data); }
-              });
+              Console.ReadFile
+                (
+                    _args.join(' '),
+                    function(data) { go(data); }
+                );
           }
           else
           {
@@ -141,27 +144,27 @@
       fn: Emulator.Dump
   },
 
-  disasm:
+    disasm:
   {
-    help: 'disasm [addr] [count]\nDisassemble count instructions from supplied address or pc.',
-    fn: function(_args)
-    {
-      var addr = _args? _args.shift() : undefined;
-      var count = _args? _args.shift() : undefined;
-      if( addr == undefined ) { addr = Emulator.regs[9]; }
-      if( count == undefined ) { count = 4; }
-      addr |= 0;
-      count |= 0;
-      for( var i = 0; i < count; i++ )
+      help: 'disasm [addr] [count]\nDisassemble count instructions from supplied address or pc.',
+      fn: function(_args)
       {
-        var r = Emulator.Disassemble(addr);
-        Console.Log( r[0] );
-        addr += r[1];
+          var addr = _args ? _args.shift() : undefined;
+          var count = _args ? _args.shift() : undefined;
+          if (addr == undefined) { addr = Emulator.regs[9]; }
+          if (count == undefined) { count = 4; }
+          addr |= 0;
+          count |= 0;
+          for (var i = 0; i < count; i++)
+          {
+              var r = Emulator.Disassemble(addr);
+              Console.Log(r[0]);
+              addr += r[1];
+          }
       }
-    }
   },
 
-  patch:
+    patch:
   {
       help: 'patch [addr data [data [data ...]]]\nCopy arbitrary data to memory; no-argument form copies retained assembler data to memory',
       fn: function(_args)
@@ -327,6 +330,23 @@
         }
     }
 
+    Console.ReadFile = function(_file, _cb)
+    {
+        $.ajax({
+            url: _file,
+            dataType: 'text',
+            success: _cb,
+            error: (function(_f)
+                    { 
+                        return function(_xhr, _status, _thrown ) 
+                        { 
+                            Console.Log("Failed to read '" + _f + "': " + _status.toString() + "; " + _thrown.toString());
+                        }
+                    }
+                )(_file)
+        });
+    }
+
     Console.Shell = function(cmd)
     {
         DebugCommand(cmd.split(' '));
@@ -402,11 +422,11 @@
 
         handleKeyDown: function(e, _etype)
         {
-          if( _etype != 1 )
-          {
-            return true;
-          }
-          
+            if (_etype != 1)
+            {
+                return true;
+            }
+
             switch (e.keyCode)
             {
                 case 38:
@@ -536,4 +556,4 @@
 
     }
 
-})();                   // (function(){
+})();                     // (function(){

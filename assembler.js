@@ -34,7 +34,7 @@
 
     function DefinedLabel(_label)
     {
-        return (Assembler.LabelResolver.labels['$'+_label.toLowerCase()] != undefined);
+        return (Assembler.LabelResolver.labels['$' + _label.toLowerCase()] != undefined);
     }
 
     function EmitLabel(_label)
@@ -186,11 +186,11 @@
         quotedstringdata: ["quotedstringtuple | quotedstringunit"],
         quotedstringtuple: ["quotedstringunit quotedstringdata", function(_m) { return (function(fn0, fn1) { return function() { fn0(); fn1(); } })(_m[0], _m[1]); } ],
         quotedstringunit: ["stringchar | escape",
-          function(_m) 
-          { 
-            CountAssembledWords(1);
-            return (function(_code){ return function(){ EmitWord(_code);} })(_m[0]); 
-          }        
+          function(_m)
+          {
+              CountAssembledWords(1);
+              return (function(_code) { return function() { EmitWord(_code); } })(_m[0]);
+          }
         ],
         stringchar: ["/[^\"'\\\\]/", function(_m) { return _m[0].charCodeAt(0); } ],
         escape: ["'\\\\' escapecode", function(_m) { return _m[1]; } ],
@@ -322,7 +322,7 @@
         regindoffsetleft: ["/\\[\\s*/ expression /\\s*/ /[+-]/ /\\s*/ /;[abcxyzij]/ /\\s*\\]/",
           function(_m)
           {
-              var expr = _m[3]+'('+_m[1][0]+')';
+              var expr = _m[3] + '(' + _m[1][0] + ')';
               var id = 'abcxyzij'.indexOf(_m[5].charAt(1).toLowerCase());
               CountAssembledWords(1);
               return (function(i, e)
@@ -460,11 +460,27 @@
     }
 
     // -----------------------
+    Assembler.IncludeRegexp = new RegExp('^\\s*[.]?include\\s*["]([^"]+)["]', 'i');
     Assembler.Assemble = function(_text)
     {
-        Assembler.Program = _text;
-        BeginNewBlock(0);
         Assembler.BlockAccumulator.blocks = [];
+
+        // process includes
+        Assembler.Program = _text;
+        var m = Assembler.IncludeRegexp.exec(_text);
+        if (m && m[1])
+        {
+            Console.ReadFile(m[1], function(_data)
+            {
+                Assembler.Program = Assembler.Program.replace(Assembler.IncludeRegexp, _data + "\n");
+                setTimeout("Assembler.Assemble(Assembler.Program)", 0)
+            }
+            );
+            return false;
+        }
+
+        // can actually start assembling now
+        BeginNewBlock(0);
         Assembler.LabelResolver.pc = 0;
         Assembler.ErrorState = 0;
         Assembler.LabelResolver.numericForward = [];
@@ -476,7 +492,7 @@
         var lines = _text.split(/\n/);
         Assembler.Lines = _text.split(/\n/);
         Assembler.MemMap = [];
-        
+
         // so, I decided to use regular expressions to solve the problem of macro parsing...
         macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
 
@@ -485,57 +501,57 @@
         for (var i = 0; i < lines.length; i++)
         {
             var line = lines[i].replace(/[\r\n]+/g, '').replace(/;.*$/g, ''); // strip comments, strip newline at end            
-            
+
             // we need to escape names so they can be differentiated from labels, but not in quoted strings
             // split the line into quoted and nonquoted sections
             var tokens = [];
             var currtoken = '';
 
-            for( var j = 0; j < line.length; j++ )
+            for (var j = 0; j < line.length; j++)
             {
-              switch(line[j])
-              {
-                case '"':
-                case "'":
-                    if(tokens.length & 1)
-                    {
-                      tokens.push(currtoken + line[j]);
-                      currtoken = '';
-                    }
-                    else
-                    {
-                      tokens.push(currtoken);
-                      currtoken = line[j];
-                    }
-                  break;
-                default:
-                    currtoken += line[j];
-                  break;
-              }
+                switch (line[j])
+                {
+                    case '"':
+                    case "'":
+                        if (tokens.length & 1)
+                        {
+                            tokens.push(currtoken + line[j]);
+                            currtoken = '';
+                        }
+                        else
+                        {
+                            tokens.push(currtoken);
+                            currtoken = line[j];
+                        }
+                        break;
+                    default:
+                        currtoken += line[j];
+                        break;
+                }
             }
             tokens.push(currtoken);
-            for( var j = 0; j < tokens.length; j+=2 )
+            for (var j = 0; j < tokens.length; j += 2)
             {
-              tokens[j] = tokens[j].replace(/\b([abcxyzij]|pc|sp|o)\b(?!['])/ig, ';$&'); 
+                tokens[j] = tokens[j].replace(/\b([abcxyzij]|pc|sp|o)\b(?!['])/ig, ';$&');
             }
-            line = tokens.join(''); 
+            line = tokens.join('');
 
             var match = (macroregexp).exec(line);
             if (match)
             {
                 var conv = [match[1]];
                 var params = [];
-                if( match.length > 1 )
+                if (match.length > 1)
                 {
-                  var spl = match[2].split(','); // ...about here I'm realising I now have two problems.
-                  for( var j = 0; j < spl.length; j++ )
-                  {
-                    params.push( ((/^\s*\b(_[A-Za-z0-9_]+)\b\s*/).exec(spl[j]))[1] );
-                  }
+                    var spl = match[2].split(','); // ...about here I'm realising I now have two problems.
+                    for (var j = 0; j < spl.length; j++)
+                    {
+                        params.push(((/^\s*\b(_[A-Za-z0-9_]+)\b\s*/).exec(spl[j]))[1]);
+                    }
                 }
-                for( var j = 0; j < params.length; j++ )
+                for (var j = 0; j < params.length; j++)
                 {
-                  conv.push( new RegExp( '\\b' + params[j] + '\\b', 'g' ) );
+                    conv.push(new RegExp('\\b' + params[j] + '\\b', 'g'));
                 }
                 cmacro.unshift(conv);
                 Assembler.Macros[cmacro[0][0]] = cmacro;
@@ -557,20 +573,20 @@
 
         var macrore = '';
         for (var mdesc in Assembler.Macros)
-        {          
-          macrore += '(?:\\b(' + mdesc + ')\\b\\s*';
-          var mparam = Assembler.Macros[mdesc][0];
-          if( mparam.length > 1 )
-          {
-            // please just make it stop
-            macrore += '[(]?(';
-            for( var j = 1; j < mparam.length; j++ )
+        {
+            macrore += '(?:\\b(' + mdesc + ')\\b\\s*';
+            var mparam = Assembler.Macros[mdesc][0];
+            if (mparam.length > 1)
             {
-              macrore += '\\s*[^,()]+\\s*,'; // just kill me now
+                // please just make it stop
+                macrore += '[(]?(';
+                for (var j = 1; j < mparam.length; j++)
+                {
+                    macrore += '\\s*[^,()]+\\s*,'; // just kill me now
+                }
+                macrore = macrore.substring(0, macrore.length - 1) + ')[)]?';
             }
-            macrore = macrore.substring(0, macrore.length - 1) + ')[)]?';
-          }
-          macrore +=  ')|';
+            macrore += ')|';
         }
         macrore = macrore.substring(0, macrore.length - 1);
         macrore = new RegExp(macrore, 'i');
@@ -580,47 +596,47 @@
         for (var i = 0; i < lines.length; i++)
         {
             Assembler.CurrLine = (function(_i) { return function() { return _i + 1; }; })(i);
-            Assembler.CurrLineNumber = i+1;
-            var toparse = [ lines[i] ];
+            Assembler.CurrLineNumber = i + 1;
+            var toparse = [lines[i]];
             var macro = macrore.exec(toparse[0]);
-            if( macro ) 
-            { 
-              macro.shift(); 
-              while( macro.length && ( macro[0] == undefined ) )
-              {
-                macro.shift(); // for the love of all that is good, WHY DID YOU SPEC THAT? Why?
-              }
-            }
-            if( macro && Assembler.Macros[macro[0]] )
+            if (macro)
             {
-              var parambodies = [];
-              if( macro.length > 0 )
-              {
-                parambodies = macro[1].split(',');
-              }
-              
-              toparse.pop();
-              var source = Assembler.Macros[macro[0]];
-              var sourcedesc = source[0];
-              for( var j = 1; j < source.length; j++ )
-              {                
-                var sourceline = source[j];
-                for( var k = 1; k < sourcedesc.length; k++ )
+                macro.shift();
+                while (macro.length && (macro[0] == undefined))
                 {
-                  if( k > parambodies.length )
-                  {
-                    Console.Log( Assembler.CurrLine() + ": Not enough parameters supplied for macro invocation." );
-                    Assembler.ErrorState = 1;
-                    parambodies[k-1] = '';
-                  }                
-                  sourceline = sourceline.replace( sourcedesc[k], parambodies[k-1] );
+                    macro.shift(); // for the love of all that is good, WHY DID YOU SPEC THAT? Why?
                 }
-                toparse.push( sourceline );
-              }
+            }
+            if (macro && Assembler.Macros[macro[0]])
+            {
+                var parambodies = [];
+                if (macro.length > 0)
+                {
+                    parambodies = macro[1].split(',');
+                }
+
+                toparse.pop();
+                var source = Assembler.Macros[macro[0]];
+                var sourcedesc = source[0];
+                for (var j = 1; j < source.length; j++)
+                {
+                    var sourceline = source[j];
+                    for (var k = 1; k < sourcedesc.length; k++)
+                    {
+                        if (k > parambodies.length)
+                        {
+                            Console.Log(Assembler.CurrLine() + ": Not enough parameters supplied for macro invocation.");
+                            Assembler.ErrorState = 1;
+                            parambodies[k - 1] = '';
+                        }
+                        sourceline = sourceline.replace(sourcedesc[k], parambodies[k - 1]);
+                    }
+                    toparse.push(sourceline);
+                }
             }
             else
             {
-              macro = null;
+                macro = null;
             }
 
             for (var j = 0; j < toparse.length; j++)
@@ -634,7 +650,7 @@
                     macro ?
                         ((i + 1) + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')')
                        : (i + 1)
-                    
+
                 );
 
                 try
@@ -715,4 +731,4 @@
         }
     }
 
-})();     // (function(){
+})();          // (function(){
