@@ -18,6 +18,7 @@
         return function()
         {
             _oldFn();   // call back original function *first*. Listing dependencies before dependants is more natural, this makes that work.
+            return; // TODO: fix up when we receive a new spec from Notch
 
             // screen width is 32 tiles
             // screen height is 12 tiles
@@ -249,6 +250,7 @@
         return function()
         {
             _oldFn();
+            return; // TODO: fix up when we receive a new spec from Notch
 
             var buffer = [];
             var last = 0x9000;

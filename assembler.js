@@ -61,23 +61,41 @@
 
     var OpMap =
 {
-    set: 1,
-    add: 2,
-    sub: 3,
-    mul: 4,
-    div: 5,
-    mod: 6,
-    shl: 7,
-    shr: 8,
-    and: 9,
-    bor: 10,
-    xor: 11,
-    ife: 12,
-    ifn: 13,
-    ifg: 14,
-    ifb: 15,
+    set: 0x01,
+    add: 0x02,
+    sub: 0x03,
+    mul: 0x04,
+    mli: 0x05,
+    div: 0x06,
+    dvi: 0x07,
+    mod: 0x08,
+    and: 0x09,
+    bor: 0x0A,
+    xor: 0x0B,
+    shr: 0x0C,
+    asr: 0x0D,
+    shl: 0x0E,
+    mvi: 0x0F,
+    ifb: 0x10,
+    ifc: 0x11,
+    ife: 0x12,
+    ifn: 0x13,
+    ifg: 0x14,
+    ifa: 0x15,
+    ifl: 0x16,
+    ifu: 0x17,
+    adx: 0x1a,
+    sux: 0x1b,
 
-    jsr: 1
+    jsr: 0x01,
+    
+    int: 0x08,
+    iag: 0x09,
+    ias: 0x0a,
+    
+    hwn: 0x10,
+    hwq: 0x11,
+    hwi: 0x12,
 }
 
     function BeginOp()
@@ -86,14 +104,14 @@
         EmitWord(0);
     }
 
-    function EmitBasicOp(_name, _acode, _bcode)
+    function EmitBasicOp(_name, _bcode, _acode)
     {
-        Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name.toLowerCase()] | (_acode << 4) | (_bcode << 10)) >>> 0;
+        Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name.toLowerCase()] | (_acode << 10) | (_bcode << 5)) >>> 0;
     }
 
     function EmitExtendedOp(_name, _acode)
     {
-        Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name.toLowerCase()] << 4 | (_acode << 10)) >>> 0;
+        Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name.toLowerCase()] << 5 | (_acode << 10)) >>> 0;
     }
 
     Assembler.Grammar =
@@ -105,12 +123,12 @@
         line: ["/\\s*/ statement /\\s*/ $", function(_m) { return _m[1]; } ],
         statement: ["basicop | extendedop | directive"],
 
-        basicop: ["basicopname /(,\\s*)?/ operand /\\s*,?\\s*/ operand", function(_m)
+        basicop: ["basicopname /(,\\s*)?/ boperand /\\s*,?\\s*/ aoperand", function(_m)
         {
             CountAssembledWords(1);
-            return (function(n, a, b)
+            return (function(n, b, a)
             {
-                return function() { BeginOp(); EmitBasicOp(n, a(), b()); }
+                return function() { BeginOp(); EmitBasicOp(n, b(), a()); }
             })(_m[0], _m[2], _m[4]);
         }
         ],
@@ -125,9 +143,9 @@
         ],
         directive: ["dat | origin | ret | halt | brk | shell | def | autobranch"],
 
-        basicopname: ["/\\b(set|add|sub|mul|div|mod|shl|shr|and|bor|xor|ife|ifn|ifg|ifb)\\b/ /\\s*/",
+        basicopname: ["/\\b(set|add|sub|mul|mli|div|dvi|mod|and|bor|xor|shr|asr|shl|if[bcengalu]|adx|sux)\\b/ /\\s*/",
             function(_m) { return _m[0]; } ],
-        extendedopname: ["/\\bjsr\\b/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
+        extendedopname: ["/\\b(jsr|int|iag|ias|hwn|hwq|hwi)\\b/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
 
         def: ["/[.]?\\bdef\\b\\s*/ identifier /(,\\s*)?/ expression", function(_m)
         {
@@ -150,17 +168,21 @@
                 {
                     var tgt = (eval(_expr) >>> 0) & 0xFFFF;
                     BeginOp();
-                    if (tgt < 0x20)
+                    if (tgt < 0x1f)
                     {
+                        EmitBasicOp('set', 0x1c, tgt + 0x21);
+                    }
+                    else if( tgt == 0xFFFF )
+                    {                    
                         EmitBasicOp('set', 0x1c, tgt + 0x20);
                     }
-                    else if ((_pc >= tgt) && ((_pc - tgt) < 0x20))
+                    else if ((_pc >= tgt) && ((_pc - tgt) < 0x1f))
                     {
-                        EmitBasicOp('sub', 0x1c, (_pc - tgt) + 0x20);
+                        EmitBasicOp('sub', 0x1c, (_pc - tgt) + 0x21);
                     }
-                    else if ((tgt > _pc) && ((tgt - _pc) < 0x20))
+                    else if ((tgt > _pc) && ((tgt - _pc) < 0x1f))
                     {
-                        EmitBasicOp('add', 0x1c, (tgt - _pc) + 0x20);
+                        EmitBasicOp('add', 0x1c, (tgt - _pc) + 0x21);
                     }
                     else
                     {
@@ -171,9 +193,9 @@
             })(pc, _m[1][0]);
         } ],
 
-        ret: ["/[.]?\\bret\\b/", function() { CountAssembledWords(1); return function() { EmitWord(0x61c1); } } ],
-        halt: ["/[.]?\\bhalt\\b/", function() { CountAssembledWords(1); return function() { EmitWord(0x85c3); } } ],
-        brk: ["/[.]?\\bbrk\\b/", function() { CountAssembledWords(1); return function() { EmitWord(0x3F0); } } ],
+        ret: ["/[.]?\\bret\\b/", function() { CountAssembledWords(1); return function() { EmitBasicOp('set',0x1c,0x18); } } ],
+        halt: ["/[.]?\\bhalt\\b/", function() { CountAssembledWords(1); return function() { EmitBasicOp('add',0x1c,0x20); } } ],
+        brk: ["/[.]?\\bbrk\\b/", function() { CountAssembledWords(1); return function() { EmitWord(0x7E0); } } ],
         shell: ["/[.]\\bshell\\b/ /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
 
         dataliteral: ["expression",
@@ -245,8 +267,10 @@
             ],
 
 
-        operand: ["regindoffset | regindirect | spdec | spinc | pcinc"
-                  + " | push | peek | pop | reg_o | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
+        aoperand: ["regindoffset | regindirect | spinc | pcinc"
+                  + " | peek | pop | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
+        boperand: ["regindoffset | regindirect | spdec | pcinc"
+                  + " | push | peek | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect"],
 
         labels: ["maybelabels | label"],
         maybelabels: ["label /\\s*/ labels"],
@@ -269,7 +293,7 @@
 
         reg_sp: ["/;sp\\s*/", function(_m) { return function() { return 0x1b; } } ],
         reg_pc: ["/;pc\\s*/", function(_m) { return function() { return 0x1c; } } ],
-        reg_o: ["/;o\\s*/", function(_m) { return function() { return 0x1d; } } ],
+        reg_ex: ["/;ex\\s*/", function(_m) { return function() { return 0x1d; } } ],
         spinc: ["/\\[\\s*;sp\\s*[+][+]\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } } ],
         spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x1a; } } ],
         push: ["/(push\\b|\\[;sp[+][+]\\])\\s*/", function(_m) { return function() { return 0x1a; } } ],
@@ -281,10 +305,14 @@
             var expr = _m[0][0];
             if (_m[0][1] == 0)
             {
-                var lit = eval(expr);
-                if ((lit >= 0) && (lit <= 0x1f))
+                var lit = ((eval(expr))>>>0) & 0xFFFF;
+                if ((lit >= 0) && (lit <= 0x1e))
                 {
-                    return (function(l) { return function() { return l + 0x20; } })(lit);
+                    return (function(l) { return function() { return l + 0x21; } })(lit);
+                }
+                if (lit == 0xFFFF)
+                {
+                    return (function(l) { return function() { return 0x20; } })(lit);
                 }
             }
             CountAssembledWords(1);
