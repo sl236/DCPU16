@@ -157,7 +157,7 @@
             if (opcode == 0)
             {
                 Emulator.cycles += Emulator.extOpCycles[b];
-                var aval = GetVal(a);
+                var aval = GetVal(a, 1);
                 switch (b)
                 {
                     case 0x1: // JSR a
@@ -191,9 +191,9 @@
                         break;
 
                     case 0x12: // HWI a
-                        if (Emulator.Devices[aval].onInterrupt)
+                        if (Emulator.Devices[aval] && Emulator.Devices[aval].hwI)
                         {
-                            Emulator.cycles += Emulator.Devices[aval].onInterrupt;
+                            Emulator.cycles += Emulator.Devices[aval].hwI();
                         }
                         break;
 
@@ -206,9 +206,9 @@
             else
             {
                 Emulator.cycles += Emulator.opCycles[opcode];
-                var aval = GetVal(a);
+                var aval = GetVal(a, 1);
                 apc = Emulator.regs[9];
-                var bval = GetVal(b);
+                var bval = GetVal(b, 0);
                 var tmp;
                 switch (opcode)
                 {
@@ -334,20 +334,20 @@
     }
 
     // -----------------------
-    function GetOperandDesc(_code)
+    function GetOperandDesc(_code, _isa)
     {
         if (_code < 0x08) { return [Emulator.regNames[_code], 0]; }
         if (_code < 0x10) { return ['[' + Emulator.regNames[_code - 0x8] + ']', 0]; }
         if (_code < 0x18) { return ['[[PC++]+' + Emulator.regNames[_code - 0x10] + ']', 1]; }
-        if (_code >= 0x20) { return [Console.H16(_code - 0x20), 0]; }
+        if (_code >= 0x20) { return [Console.H16(((_code - 0x21)>>>0)&0xFFFF), 0]; }
         switch (_code)
         {
-            case 0x18: return ['[SP++]', 0];
+            case 0x18: return [_isa? '[--SP]' : '[SP++]', 0];
             case 0x19: return ['[SP]', 0];
-            case 0x1a: return ['[--SP]', 0];
+            case 0x1a: return ['[SP+[PC++]]', 1];
             case 0x1b: return ['SP', 0];
             case 0x1c: return ['PC', 0];
-            case 0x1d: return ['O', 0];
+            case 0x1d: return ['EX', 0];
             case 0x1e: return ['[[PC++]]', 1];
             case 0x1f: return ['[PC++]', 1];
         }
@@ -358,8 +358,8 @@
     {
         var op = Emulator.mem[_addr];
         var opcode = op & 0x1F;
-        var a = GetOperandDesc((op >>> 10) & 0x3F);
-        var b = GetOperandDesc((op >>> 5) & 0x1F);
+        var a = GetOperandDesc((op >>> 10) & 0x3F, 1);
+        var b = GetOperandDesc((op >>> 5) & 0x1F, 0);
 
         var result = Console.H16(_addr) + ': ';
         var size = a[1];

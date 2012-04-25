@@ -343,6 +343,20 @@
           }
         ],
 
+        spindirect: ["/\\[\\s*(;sp|pick)\\s*/ expression /\\s*\\]/",
+          function(_m) { 
+                  CountAssembledWords(1);
+                  return (function(e)
+                  {
+                      return function()
+                      {
+                          EmitWord(eval(e));
+                          return 0x1a;
+                      }
+                  })(_m[1][0]);                  
+              } ],
+          
+          
         regindirect: ["/\\[\\s*/ /;[abcxyzijABCXYZIJ]/ /\\s*\\]\\s*/",
           function(_m) { return (function(id) { return function() { return id + 0x8; } })('abcxyzij'.indexOf(_m[1].charAt(1).toLowerCase())); } ],
 
@@ -456,7 +470,7 @@
         if (Assembler.LabelResolver.labels['$' + _label.toLowerCase()] == undefined)
         {
             Assembler.ErrorState = 1;
-            Console.Log("*** warning: unable to resolve '" + _label + "' in line " + Assembler.CurrLine());
+            Console.Log("Unable to resolve '" + _label + "' in line " + Assembler.CurrLine());
             return 0;
         }
         return Assembler.LabelResolver.labels['$' + _label.toLowerCase()];
