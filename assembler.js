@@ -187,7 +187,7 @@
                     }
                     else if( tgt == 0xFFFF )
                     {                    
-                        EmitBasicOp('set', 0x1c, tgt + 0x20);
+                        EmitBasicOp('set', 0x1c, 0x20);
                     }
                     else if ((_pc >= tgt) && ((_pc - tgt) < 0x1f))
                     {
@@ -206,7 +206,7 @@
             })(pc, _m[1][0]);
         } ],
 
-        ret: ["/[.]?\\bret\\b/", function() { CountAssembledWords(1); return function() { EmitBasicOp('set',0x1c,0x18); } } ],
+        ret: ["/[.]?\\bret\\b/", function() { CountAssembledWords(1); return function() { BeginOp(); EmitBasicOp('set',0x1c,0x18); } } ],
         brk: ["/[.]?\\bbrk\\b/", function() { CountAssembledWords(1); return function() { EmitWord(0x7E0); } } ],
         shell: ["/[.]\\bshell\\b/ /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
 
@@ -282,7 +282,7 @@
         aoperand: ["regindoffset | regindirect | spinc | pcinc"
                   + " | peek | pop | spindirect| reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
         boperand: ["regindoffset | regindirect | spdec | pcinc"
-                  + " | push | peek | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect"],
+                  + " | push | peek | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal_nextword"],
 
         labels: ["maybelabels | label"],
         maybelabels: ["label /\\s*/ labels"],
@@ -327,6 +327,21 @@
                     return (function(l) { return function() { return 0x20; } })(lit);
                 }
             }
+            CountAssembledWords(1);
+            return (function(e)
+            {
+                return function()
+                {
+                    EmitWord(eval(e));
+                    return 0x1f;
+                }
+            })(expr);
+        }
+          ],
+
+        literal_nextword: ["expression", function(_m)
+        {
+            var expr = _m[0][0];
             CountAssembledWords(1);
             return (function(e)
             {

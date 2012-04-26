@@ -27,7 +27,7 @@
     {
         if (_code >= 0x20)
         {
-            return ((_code - 0x21) >>> 0);
+            return (_code==0x20) ? 0xFFFF : (_code - 0x21);
         }
         switch (_code & 0xf8)
         {
@@ -415,7 +415,7 @@
                 result += ' ; ';
                 for (var i = 0; i < size; i++)
                 {
-                    result += '$' + Console.H16(Emulator.mem[_addr + i]) + ' ';
+                    result += '$' + Console.H16(Emulator.mem[_addr + i + 1]) + ' ';
                 }
             }
         }

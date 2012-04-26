@@ -476,7 +476,9 @@ Emulator.onReset = (function(_oldFn)
                         return false;
                     }
                 }
-                  
+                
+                //Console.Log(e.charCode+'; '+e.keyCode+'; '+ code + '; ' + _etype);
+                 
                 if( _etype == 0 )
                 {
                     keyQueue.push(code);

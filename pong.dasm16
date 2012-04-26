@@ -1,0 +1,591 @@
+; for convenience, a copy of http://www.toothycat.net/wiki/wiki.pl?DDD/Pong
+; http://dcpu.com/highnerd/dcpu16_1_5.txt
+;
+; Trampoline entry point - initialise Hardware
+.org 0
+	set i, 0xFFFF	; counter
+	hwn j			; number of attached devices
+	
+1:	
+    add i, 1	; next device
+    ife i, j	; all enumerated?
+		set pc, 4f	; bail
+   
+	hwq i		; load info about this device into a, b, c, x, y
+	
+    ; http://dcpu.com/highnerd/rc_1/lem1802.txt
+    ife b, 0x7349
+    ife a, 0xf615
+        set pc, 2f
+
+    ; http://dcpu.com/highnerd/rc_1/keyboard.txt
+    ife b, 0x30cf
+    ife a, 0x7406
+        set pc, 3f
+    
+    b 1b	; nothing we care about; go around
+
+2:
+	set [screen], i	; store the device id
+	; configure it how it used to be in the old days:
+	; vram at 0x8000, character ram at 0x8180 and prepopulated, palette left as default
+	
+	set a, 0	
+	set b, 0x8000
+	hwi i
+	set a, 4
+	set b, 0x8180
+	hwi i
+	set a, 1
+	set b, 0x8180
+	hwi i
+	
+	b 1b	; carry on examining devices	
+
+3:
+	set [keyboard], i	; store the device id
+	b 1b				; carry on examining devices	
+    
+4:
+	jsr main;
+	hcf 0;
+
+screen:		dat 0
+keyboard:	dat 0
+
+; main()
+;   Set up the game and run the main loop
+:main
+    ; Speed
+    set A, 0x1000;
+    jsr Game_initialise;
+
+    ; Draw the screen
+    jsr Game_displayTitle;
+    jsr Bat_draw;
+    jsr Ball_draw;
+
+    ; Wait for the player to start
+    jsr Keyboard_getWait;
+
+    ; Play the game
+:main_loop:
+    jsr Keyboard_get;
+    jsr Game_handlePlayerInput;
+
+    ; Check the delay loop
+    jsr Game_tick;
+    ife A, 0x0;
+      set PC, main_loop
+
+    ; Time to move the ball
+    jsr Ball_hide;
+    jsr Ball_move;
+    jsr Ball_draw;
+
+    ; Animate the logo
+    jsr Game_displayTitle;
+    set PC, main_loop;
+
+
+
+; Game_initialise( delayLoop A )
+;   Set up the game and clear the screen
+:Game_initialise
+    set [Game_g_gameOver], 0x0;
+    set [Game_g_speed], A;
+    set [Game_g_tickTimer], 0x0;
+    set [Game_g_animation], 0x0;
+
+    jsr Bat_reset;
+    jsr Ball_reset;
+
+    set A,0xf;
+    jsr Screen_cls;
+
+    set	A,0x4;
+    jsr	Screen_border;
+    ret;
+
+; Game_g_gameOver [word]
+:Game_g_gameOver
+   dat 0;
+
+; Game_g_speed [word]
+:Game_g_speed
+   dat 0;
+
+; Game_g_tickTimer [word]
+:Game_g_tickTimer
+   dat 0;
+
+; Game_g_animation [word]
+:Game_g_animation
+   dat 0;
+
+
+:Game_displayTitle_pong
+   dat " PONG ", 0;
+
+:Game_displayTitle_gameOver
+   dat "Game Over", 0;
+
+; Game_displayTitle()
+;    Display the "Pong" and "Game Over" messages 
+:Game_displayTitle
+
+    ; Print PONG
+    add [Game_g_animation], 1;
+
+    set A, [Game_g_animation];
+    ifg 0x8000, A;
+      set PC, Game_displayTitle_checkRHS;
+
+    ; Moving right to left
+    mul A, 0xffff;
+    set PC, Game_displayTitle_show;
+
+:Game_displayTitle_checkRHS
+    jsr Screen_width;
+    sub A, 0x7;
+    set B, A;
+    set A, [Game_g_animation];
+    ifg B, A;
+      set PC, Game_displayTitle_show;
+
+    ; Hit RHS
+    mul [Game_g_animation], 0xffff;
+
+:Game_displayTitle_show
+    set B, 0x0;
+    jsr Screen_setCursor;
+
+    set A, Game_displayTitle_pong;
+    set B, 0x1f00;
+    jsr Screen_print;
+
+    ife [Game_g_gameOver], 0x0;
+      ret;
+
+    ; Print GAME OVER
+    set A, 0xB;
+    set B, 0x4;
+    jsr Screen_setCursor;
+
+    set A, Game_displayTitle_gameOver;
+    set B, 0x1400;
+    jsr Screen_print;
+    ret;
+
+
+; Game_handlePlayerInput( key A )
+;   Handle player inout and show the bat
+:Game_handlePlayerInput
+    ; Is the player moving left or right?
+    set X,0x0;
+    ife A, 0x82;
+      sub X, 0x1;
+
+    ife A, 0x83;
+      add X, 0x1;
+
+    ; Player is stationary
+    ife X, 0x0;
+      ret;
+
+    ; Move the bat
+    set [--SP], X;
+    jsr Bat_hide;
+    set A,[SP++];
+    jsr Bat_move;
+    jsr Bat_draw;
+    ret;
+
+; Game_tick() : A (non-zero if we have to do something)
+;     Returns true when we have exceeded the delay loop
+:Game_tick
+    set A,0;
+    add [Game_g_tickTimer],1;
+    ifg [Game_g_speed],[Game_g_tickTimer];
+      ret;
+
+    ifn [Game_g_gameOver], 0x0;
+      ret;
+
+    set [Game_g_tickTimer],0x0;
+    set A,1;
+    ret;
+
+; Game_setGameOver()
+;     Called when the player has missed the ball
+:Game_setGameOver
+    set [Game_g_gameOver], 0x1;
+    jsr Game_displayTitle;
+    ret;
+
+
+
+; Bat_reset()
+;    Initalise the Bat
+:Bat_reset
+   set [Bat_width], 0x8;
+   set [Bat_x], 0x0;
+   ret;
+
+; Bat Size
+:Bat_width [word]
+   dat 0;
+
+:Bat_x
+   dat 0;
+
+
+; Bat_move( dx A )
+;    The user has asked the bat to move left or right
+:Bat_move
+   set I, [Bat_x];
+   add I, A;
+
+   ; Check not off the left
+   ifg 0x0, I;
+     ret;
+
+   ; Check not off the right
+   jsr Screen_width;
+   sub A, [Bat_width];
+   ifg I,A;
+     ret;
+
+   set [Bat_x], I;
+   ret;
+
+; Bat_drawWithChar( charToDraw A )
+;    Hide or draw the bat
+:Bat_drawWithChar
+   set [--SP],A;
+   jsr Screen_height;
+   set B, A;
+   sub B, 0x1;
+   set A, [Bat_x];
+   jsr Screen_setCursor;
+
+   set J, [Bat_width];
+   set A,[SP++];
+:Bat_draw_loop
+   ife J, 0x0;
+     ret;
+   jsr Screen_putChar;
+   sub J, 0x1;
+   set PC, Bat_draw_loop;
+
+; Bat_draw()
+;    Draw the bat
+:Bat_draw
+   set A, 0xf120;
+   jsr Bat_drawWithChar;
+   ret
+
+; Bat_hide()
+;    Hide the bat
+:Bat_hide
+   set A, 0x1f20;
+   jsr Bat_drawWithChar;
+   ret
+
+; Ball_reset()
+;    Initialise the Ball
+:Ball_reset
+   set [Ball_x],  0x88;
+   set [Ball_y],  0x8;
+   set [Ball_dx], 0x1;
+   set [Ball_dy], 0x1;
+   set [Ball_bounceCount], 0x0;
+   ret;
+
+; Ball position and speed (*8 of screen resolution)
+:Ball_x
+   dat 0;
+
+:Ball_y
+   dat 0;
+
+:Ball_dx
+   dat 0;
+
+:Ball_dy
+   dat 0;
+
+:Ball_bounceCount
+   dat 0;
+
+
+; Ball_drawWithChar( character A )
+:Ball_drawWithChar
+   set [--SP], A;
+
+   set A, [Ball_x];
+   set B, [Ball_y];
+   shr A, 3;
+   shr B, 3;
+
+   jsr Screen_setCursor;
+
+   set A, [SP++];
+   jsr Screen_putChar;
+   ret;
+
+; Ball_draw()
+:Ball_draw
+   set A, 0x1f4f;
+   jsr Ball_drawWithChar;
+   ret;
+
+; Ball_hide()
+:Ball_hide
+   set A, 0x1f20;
+   jsr Ball_drawWithChar;
+   ret;
+
+; Ball_move()
+:Ball_move
+   ; X direction
+   set X,[Ball_x];
+   add X,[Ball_dx];
+
+   ; Left wall
+   ifg 0x8000, X;
+     set PC,Ball_move_checkRightWall;
+
+   ; Bounce left
+   mul [Ball_dx], 0xffff;
+   set Y, X;
+   set X, 0;
+   sub X, Y;
+
+:Ball_move_checkRightWall
+   jsr Screen_width;
+   sub A, 1;
+   shl A, 3;
+   ifg A, X;
+     Set PC,Ball_move_xOk;
+
+   ; Bounce right
+   mul [Ball_dx], 0xffff;
+   set Y, X;
+   sub Y, A;
+   set X, A;
+   sub X, Y;
+
+:Ball_move_xOk
+   set [Ball_x], X
+
+
+   ; Y direction
+   set Y,[Ball_y];
+   add Y,[Ball_dy];
+
+   ; Top wall
+   ifg Y, 0x8
+     set PC,Ball_move_checkDead;
+
+   ; Bounce top
+   mul [Ball_dy], 0xffff;
+   set Z, Y;
+   sub Z, 0x8;
+   set Y, 0x8;
+   sub Y, Z;
+
+:Ball_move_checkDead
+   jsr Screen_height;
+   shl A, 3;
+   ifg A, Y;
+      set PC,Ball_move_checkBat;
+   
+   ;Game Over
+   jsr Game_setGameOver;
+   ret;
+
+:Ball_move_checkBat
+   jsr Screen_height;
+   sub A, 2;
+   shl A, 3;
+   ifg A, Y;
+      set PC,Ball_move_yOk;
+
+   ; Is the bat here?
+   set X,[Bat_x];
+   shl X, 3;
+   ifg X, [Ball_x];
+      set PC,Ball_move_yOk;
+
+   set X,[Bat_x];
+   add X,[Bat_width];
+   shl X, 3;
+   ifg [Ball_x], X
+      set PC,Ball_move_yOk;
+
+   ; Bounce off bat
+   mul [Ball_dy], 0xffff;
+   set Z, Y;
+   sub Z, A;
+   set Y, A;
+   sub Y, Z;
+
+   ; Make it exciting
+   add [Ball_bounceCount],1;
+   ifg 5, [Ball_bounceCount];
+     set PC, Ball_move_passthrough; 
+
+   ; make the bat smaller
+   jsr Bat_hide;
+   sub [Bat_width], 0x1;
+   jsr Bat_draw;
+
+   add [Ball_dy], 3;
+   set [Ball_bounceCount],0;
+
+Ball_move_passthrough:
+   ifg [Ball_dy], 0xfffc;
+     sub [Ball_dy], 1;
+
+   set X,[Bat_width];
+   shr X, 1;
+   add X,[Bat_x];
+   shl X, 3;
+   sub X, [Ball_x];
+
+   sub [Ball_dx], 2;
+   ifg 0x8000,X;
+     set PC,Ball_move_yOk;
+   add [Ball_dx], 4;
+   
+:Ball_move_yOk
+   set [Ball_y], Y
+   ret;
+
+
+
+; Screen_cursorPosition [word]
+:Screen_g_cursorPosition
+   dat 0;
+
+; Screen_width() : Width A
+:Screen_width
+   set A, 0x20;
+   ret;
+
+; Screen_height() : Height A
+:Screen_height
+   set A, 0xc;
+   ret;
+
+; Screen_setCursor( xposition A, y position B )
+;    Set the write position of the cursor
+:Screen_setCursor
+   set I, A;
+   jsr Screen_width;
+   mul B, A;
+   add I, B;
+   set [Screen_g_cursorPosition], I;
+   ret;
+
+; Screen_putChar( character A )
+;    Write a character
+:Screen_putChar
+   set I, [Screen_g_cursorPosition];
+   set [0x8000+I],A
+   add [Screen_g_cursorPosition], 0x1;
+   ret;
+
+; Screen_print( character[] A, colourToBor B )
+;    Write a string
+:Screen_print
+   set J, A;
+:Screen_print_loop
+   set A, [0x0+J];
+
+   ife 0x0, A;
+     ret;
+
+   bor A,B;
+   jsr Screen_putChar;
+   add J, 0x1;
+   set PC, Screen_print_loop;
+
+; Screen_cr()
+;   New line
+:Screen_cr
+   jsr Screen_width;
+
+   set B, [Screen_g_cursorPosition];
+   div B,A;
+   add B,0x1;
+   
+   set A, 0x0;
+   jsr Screen_setCursor;
+   ret;
+
+
+; Screen_cls( backgroundColour A )
+;  Clear the screen
+:Screen_cls
+    and A, 0xf;
+    set X, A;
+    shl X, 8;
+    bor X, 0x20;
+
+    jsr Screen_width;
+    set Y, A;
+    jsr Screen_height;
+    mul Y, A;
+    sub Y, 0x1;
+
+:Screen_cls_loop
+   set [0x8000+Y], X
+   sub Y, 0x1;
+   ifn Y, 0xffff;
+     set PC, Screen_cls_loop;
+
+   ; Set cursor top left
+   set A, 0x0;
+   set B, 0x0;
+   jsr Screen_setCursor;
+   ret;
+
+; Screen_border( borderColour A )
+;    Set the border colour
+:Screen_border
+   and A,0xf; 
+   and [0x8280], 0xfff0;
+   bor [0x8280],A;
+   
+   set push, a
+   set push, b
+   set a, 3
+   set b, [0x8280]
+   hwi [screen]
+   set b, pop
+   set a, pop
+   
+   ret;
+
+; Keyboard_get() : A next character (or 0)
+;   Dequeue the next character and return it (0 if none available)
+:Keyboard_get
+   set push, c
+   set a, 1
+   hwi [keyboard]
+   set a, c
+   set c, pop
+   ret;
+   
+; Keyboard_getWait() : A next character
+;   Wait for the user to press a key 
+:Keyboard_getWait
+   jsr Keyboard_get;
+   ife A,0x0;
+     set PC, Keyboard_getWait;
+   ret;
+
+
+;
