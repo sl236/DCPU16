@@ -191,28 +191,6 @@
       }
   },
 
-    keylog:
-  {
-      help: 'keylog\nToggles keyboard event logging.\n',
-      fn: function(_args)
-      {
-          if (_args.length)
-          {
-              Console.Options['keylog'] = !parseInt(_args[0]);
-          }
-          if (Console.Options['keylog'])
-          {
-              Console.Options['keylog'] = 0;
-              Console.Log("Keyboard event logging disabled.\n");
-          }
-          else
-          {
-              Console.Options['keylog'] = 1;
-              Console.Log("Keyboard event logging enabled.\n");
-          }
-      }
-  },
-
     help:
   {
       help: 'help [command]\nDisplays information about a command or the set of available commands.',

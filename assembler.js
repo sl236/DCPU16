@@ -69,13 +69,13 @@
     div: 0x06,
     dvi: 0x07,
     mod: 0x08,
-    and: 0x09,
-    bor: 0x0A,
-    xor: 0x0B,
-    shr: 0x0C,
-    asr: 0x0D,
-    shl: 0x0E,
-    mvi: 0x0F,
+    mdi: 0x09,
+    and: 0x0A,
+    bor: 0x0B,
+    xor: 0x0C,
+    shr: 0x0D,
+    asr: 0x0E,
+    shl: 0x0F,
     ifb: 0x10,
     ifc: 0x11,
     ife: 0x12,
@@ -84,14 +84,21 @@
     ifa: 0x15,
     ifl: 0x16,
     ifu: 0x17,
+    
     adx: 0x1a,
     sux: 0x1b,
 
+    sti: 0x1e,
+    std: 0x1f,
+
     jsr: 0x01,
     
+    hcf: 0x07,
     int: 0x08,
     iag: 0x09,
     ias: 0x0a,
+    iap: 0x0b,
+    iaq: 0x0c,
     
     hwn: 0x10,
     hwq: 0x11,
@@ -149,9 +156,9 @@
         ],
         directive: ["dat | origin | ret | brk | shell | def | autobranch"],
 
-        basicopname: ["/\\b(set|add|sub|mul|mli|div|dvi|mod|and|bor|xor|shr|asr|shl|if[bcengalu]|adx|sux)\\b/ /\\s*/",
+        basicopname: ["/\\b(set|add|sub|mul|mli|div|dvi|mod|mdi|and|bor|xor|shr|asr|shl|if[bcengalu]|adx|sux|sti|std)\\b/ /\\s*/",
             function(_m) { return _m[0]; } ],
-        extendedopname: ["/\\b(?:jsr|int|iag|ias|hwn|hwq|hwi)\\b/ /(\\s*,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
+        extendedopname: ["/\\b(?:jsr|hcf|int|iag|ias|iap|iaq|hwn|hwq|hwi)\\b/ /(\\s*,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
 
         def: ["/[.]?\\bdef\\b\\s*/ identifier /(,\\s*)?/ expression", function(_m)
         {

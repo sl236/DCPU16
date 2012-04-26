@@ -5,22 +5,21 @@
 // -----------------------------------------------------------------------
 // Peripheral device functionality
 
-(function()
+(function() {
+
+// -------------
+// Video and character memory
+// -------------
+
+// Hook self into emulator bootstrap
+Emulator.onReset = (function(_oldFn)
 {
-
-    // -------------
-    // Video and character memory
-    // -------------
-
-    // Hook self into emulator bootstrap
-    Emulator.onReset = (function(_oldFn)
+    return function()
     {
-        return function()
-        {
-            _oldFn();   // call back original function *first*. Listing dependencies before dependants is more natural, this makes that work.
+        _oldFn();   // call back original function *first*. Listing dependencies before dependants is more natural, this makes that work.
 
-            var deviceDesc = // http://dcpu.com/highnerd/lem1802.txt
-            {
+        var deviceDesc = // http://dcpu.com/highnerd/lem1802.txt
+        {
             hwType: 0x7349f615,
             hwRev: 0x1802,
             hwManufacturer: 0x1c6c8b36,
@@ -356,6 +355,8 @@
     }
 })(Emulator.onReset);
 
+
+
 // -------------
 // Clock
 // -------------    
@@ -379,13 +380,13 @@ Emulator.onReset = (function(_oldFn)
             ++interruptTickCount;
             ++tickCount;
 
-            if(interruptTickCount >= tickRate)
+            if (interruptTickCount >= tickRate)
             {
                 interruptTickCount = 0;
                 if (message && tickRate)
                 {
                     Emulator.InterruptQueue.push({ Message: message });
-                }            
+                }
             }
 
             var currTime = ((new Date()).getTime());
@@ -402,17 +403,17 @@ Emulator.onReset = (function(_oldFn)
             hwManufacturer: 0x00005345,
             hwI: function()
             {
-                switch(Emulator.regs[0])
+                switch (Emulator.regs[0])
                 {
                     case 0:
-                            tickRate = Emulator.regs[1];
-                            tickCount = 0;
+                        tickRate = Emulator.regs[1];
+                        tickCount = 0;
                         break;
                     case 1:
-                            Emulator.regs[2] = tickCount;
+                        Emulator.regs[2] = tickCount;
                         break;
                     case 2:
-                            message = Emulator.regs[1];
+                        message = Emulator.regs[1];
                         break;
                 }
                 return 0;
@@ -428,39 +429,30 @@ Emulator.onReset = (function(_oldFn)
 // -------------
 // Keyboard
 // -------------    
-function KeyLog(_charcode, _code, _up, _stored)
-{
-    var str = Console.H16(_charcode) + " ('" + String.fromCharCode(_charcode) + "')";
-    switch (_up)
-    {
-        case 0:
-            str += " typed; ";
-            break;
-        case 1:
-            str += " pressed; ";
-            break;
-        case 2:
-            str += " released; ";
-            break;
-    }
-    str += (_code ? Console.H16(_code) : "nothing");
-    str += _stored ? " sent to " + Console.H16(_stored) : " stored in emulator (ringbuffer full)."
-    Console.Log(str);
-}
 
 Emulator.onReset = (function(_oldFn)
 {
     return function()
     {
         _oldFn();
-        return; // TODO: fix up when we receive a new spec from Notch
 
-        var buffer = [];
-        var last = 0x9000;
+        var scanCodeMap =
+        {
+            8:  0x10,
+            13: 0x11,
+            45: 0x12,
+            46: 0x13,
+            38: 0x80,
+            40: 0x81,
+            37: 0x82,
+            39: 0x83,
+            16: 0x90,
+            17: 0x91
+        };
 
-        var shiftmap = [];
-        var shifted = 'QWERTYUIOPASDFGHJKLZXCVBNM';
-        var unshifted = 'qwertyuiopasdfghjklzxcvbnm';
+        var keyQueue=[];
+        var keyStatus=[];
+        var message = 0;
 
 
         var screen = document.getElementById('screen');
@@ -468,95 +460,76 @@ Emulator.onReset = (function(_oldFn)
         {
             function handleKeyboard(e, _etype)
             {
-                var charcode = e.charCode || e.keyCode;
-
-                if (e.ctrlKey && ((charcode | 0x20) >= 0x61) && ((charcode | 0x20) <= 0x7a))
+                var code = e.charCode;
+                if( !code )
                 {
-                    charcode = (charcode | 0x20) - 0x61;
-                }
-
-                var code = charcode;
-                if (_etype)
-                {
-                    if (Console.Keymap[charcode] == undefined)
-                    {
-                        return true;
-                    }
-                    code = Console.Keymap[charcode] | ((_etype == 1) ? 0x100 : 0);
-                }
-                else
-                {
-                    if ((!e.charCode) && Console.Keymap[e.keyCode])
+                    code = scanCodeMap[e.keyCode];
+                    if( !code )
                     {
                         return false;
                     }
                 }
-
-                if (Emulator.mem[last])
+                else
                 {
-                    if (code)
+                    if( ( code < 0x20 ) || (code > 0x7F ) )
                     {
-                        buffer.push[code];
+                        return false;
                     }
-                    if (Console.Options['keylog']) { KeyLog(charcode, code, _etype, 0); }
+                }
+                  
+                if( _etype == 0 )
+                {
+                    keyQueue.push(code);
                 }
                 else
                 {
-                    if (code)
-                    {
-                        Emulator.mem[last] = code;
-                    }
-                    if (Console.Options['keylog']) { KeyLog(charcode, code, _etype, last); }
-                    last = Console.Options.keyringbuffer ? (last + 1) & 0x900F : 0x9000;
+                    keyStatus[code] = (_etype == 1);
                 }
-                return !code;
+                
+                if( message )
+                {
+                    Emulator.InterruptQueue.push({ Message: message });
+                }
+                
+                return false;
             }
+            
             screen.onclick = function()
             {
                 Console.SetKeyboardFocus(handleKeyboard);
             }
-        }
-
-        function onModifyKeyPtr(_addr, _value)
-        {
-            if (Console.Options['keyptr'])
+            
+            var deviceDesc = // http://dcpu.com/highnerd/rc_1/keyboard.txt
             {
-                Emulator.mem[0x9010] = last;
-                for (var i = 1; i < 0xF; i++)
+                hwType: 0x30cf7406,
+                hwRev: 0x1,
+                hwManufacturer: 0x00005345,
+                hwI: function()
                 {
-                    if (Emulator.mem[(i + last) & 0x900F])
+                    switch (Emulator.regs[0])
                     {
-                        Emulator.mem[0x9010] = (i + last) & 0x900F;
-                        return;
+                        case 0:
+                            keyQueue = [];
+                            break;
+                        case 1:
+                            Emulator.regs[2] = keyQueue.length ? keyQueue.shift() : 0;
+                            break;
+                        case 2:
+                            Emulator.regs[2] = keyStatus[Emulator.regs[1]] ? 1 : 0;
+                            break;
+                        case 3:
+                            message = Emulator.regs[1];
+                            break;
                     }
+                    return 0;
                 }
-            }
+            };
+            
+            Emulator.Devices.push(deviceDesc);
         }
-
-        function onModifyRingBuffer(_addr, _value)
-        {
-            if (Console.Options['keyptr'] && (_addr == Emulator.mem[0x9010]))
-            {
-                Emulator.mem[0x9010] = (Emulator.mem[0x9010] + 1) & 0x900f;
-            }
-
-            if (buffer.length && (_addr == _last) && (_value == 0))
-            {
-                Emulator.mem[last] = buffer.shift();
-                if (Console.Options['keylog'])
-                {
-                    Console.Log("Keycode " + Emulator.mem[last] + " written to " + last + " (old value was read by app)");
-                }
-                last = Console.Options.keyringbuffer ? (last + 1) & 0x900F : 0x9000;
-            }
-        }
-
-        for (i = 0x9000; i < 0x9010; i++)
-        {
-            Emulator.MemoryHooks[i] = onModifyRingBuffer;
-        }
-        Emulator.MemoryHooks[0x9010] = onModifyKeyPtr;
+        
+        return;
     }
 })(Emulator.onReset);
 
-})();                                    // (function(){
+})(); // (function(){
