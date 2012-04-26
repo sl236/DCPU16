@@ -1,0 +1,176 @@
+            ; define where the screen is
+def screen 0x8000
+
+            ; i : hardware id counter
+            set i, 0
+            hwn j
+
+:setup ; inspect all connected devices, setup recognized ones
+            ife i, j
+                set pc, main
+            
+            hwq i
+            
+            ; LEM1802 Low Energy Monitor
+            ife b, 0x7349
+            ife a, 0xf615
+                set pc, setup_lem1802
+
+            ; Generic Keyboard (compatible)
+            ife b, 0x30cf
+            ife a, 0x7406
+                set pc, setup_keyboard
+
+            ; Generic Clock (compatible)
+            ife b, 0x12d0
+            ife a, 0xb402
+                set pc, setup_clock
+
+:setup_next
+            add i, 1
+            set pc, setup
+
+
+:lem1802 dat 0x0
+:setup_lem1802
+            set [lem1802], i
+
+            ; set the video buffer
+            set a, 0
+            set b, screen
+            hwi i
+
+            ; draw a border
+            set a, 3
+            set b, 0x9
+            hwi i
+
+            set pc, setup_next
+
+
+:keyboard dat 0x0
+:setup_keyboard
+            set [keyboard], i
+
+            ; call an interrupt on events with msg 0xdead
+            set a, 3
+            set b, 0xdead
+            hwi i
+
+            set pc, setup_next
+
+
+:clock dat 0x0
+:setup_clock
+            set [clock], i
+
+            ; tick the clock once per second
+            set a, 0
+            set b, 60
+            hwi i
+
+            ; send an interrupt at every tick
+            set a, 2
+            set b, 0xbeef
+            hwi i
+
+            ; draw an x in the top right if the clock is detected
+            set [screen+31], 0x7000 | 'x'
+
+            set pc, setup_next
+
+
+:main
+            ; ISR will handle interrupts
+            ias ISR
+
+            ; i : middle of second row for "XXXX A" display
+            ; b : color mask for "XXXX"
+            set i, 13+32
+            set b, 0x7000
+
+:loop
+            ; check if a key has been pressed
+            set a, 1
+            set c, 0
+            ifn [keyboard], 0
+				hwi [keyboard]
+            ife c, 0
+                set pc, loop
+
+            ; we got a key, draw its hex value
+            jsr draw_hex
+
+            ; and draw the character for the received key
+            bor c, 0x3000
+            set [screen+5+i], c
+
+            set pc, loop
+
+
+            ; count the number of times this interrupt has been called
+:counter dat 0x0
+
+:ISR
+            ; disable concurrent interrupts
+            ias 0
+
+            ; back up some values
+            set push, c
+            set push, i
+            set push, b
+
+            add [counter], 1
+
+            ; draw the interrupt message on 4th row
+            set c, a
+            set i, 13+32*3
+            set b, 0xa000
+            jsr draw_hex
+
+            ; draw the counter on 5th row
+            set c, [counter]
+            set i, 13+32*4
+            set b, 0xc000
+            jsr draw_hex
+
+            ; restore and return
+            set b, pop
+            set i, pop
+            set c, pop
+
+            set a, pop
+            ias ISR
+            set pc, pop
+
+
+:draw_hex ;write the word in c to [screen+i] with bor mask b
+            set push, j
+            set push, c
+
+            set j, 0
+            add i, 4
+
+:draw_hex_loop
+            ife j, 16
+                set pc, end_draw_hex
+
+            sub i, 1
+            set c, peek
+            shr c, j
+            and c, 0xf
+            ifl c, 0xa
+                add c, '0'
+            ifl c, 0x10
+                add c, 'a'-10
+            bor c, b
+            set [screen+i], c
+            
+            add j, 4
+            set pc, draw_hex_loop
+
+:end_draw_hex
+            set c, pop
+            set j, pop
+            set pc, pop
+

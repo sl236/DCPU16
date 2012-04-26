@@ -120,9 +120,16 @@
     {
         if (Emulator.InterruptQueue.length)
         {
-            var interrupt = Emulator.InterruptQueue.shift();
-            if (Emulator.regs[13])
+            if (Emulator.InterruptQueue.length >= 256)
             {
+                Console.Log("Interrupt queue full, emulator stopped.")
+                Emulator.paused = true;
+                return;
+            }
+
+            if (Emulator.InterruptQueueEnable && Emulator.regs[13])
+            {
+                var interrupt = Emulator.InterruptQueue.shift();
                 Emulator.mem[--Emulator.regs[8]] = Emulator.regs[9];
                 Emulator.mem[--Emulator.regs[8]] = Emulator.regs[0];
                 Emulator.regs[0] = ((interrupt.Message) >>> 0) & 0xFFFF;
@@ -130,9 +137,13 @@
             }
             else
             {
-                if (interrupt.onFail)
+                if (!Emulator.InterruptQueueEnable)
                 {
-                    interrupt.onFail();
+                    var interrupt = Emulator.InterruptQueue.shift();
+                    if (interrupt.onFail)
+                    {
+                        interrupt.onFail();
+                    }
                 }
             }
         }
@@ -166,6 +177,11 @@
                         Emulator.regs[9] = aval;
                         break;
 
+                    case 0x7: // HCF a
+                        Console.Log("Halt and catch fire instruction received. Emulation paused.");
+                        Emulator.paused = true;
+                        return;
+
                     case 0x8: // INT a
                         Emulator.InterruptQueue.push({ Message: aval });
                         break;
@@ -176,6 +192,19 @@
 
                     case 0xA: // IAS a
                         Emulator.regs[13] = aval;
+                        break;
+
+                    case 0xB: // IAP a
+                        if (Emulator.regs[13] != 0)
+                        {
+                            Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
+                            Emulator.mem[Emulator.regs[8]] = Emulator.regs[13];
+                            Emulator.regs[13] = aval;
+                        }
+                        break;
+
+                    case 0xC: // IAQ a
+                        Emulator.InterruptQueueEnable = aval;
                         break;
 
                     case 0x10: // HWN a
@@ -246,34 +275,32 @@
                     case 0x8: // MOD
                         SetVal(b, bval ? (bval % aval) : 0, apc, asp);
                         break;
-                    case 0x9: // AND
+                    case 0x9: // MDI
+                        SetVal(b, bval ? (AsSigned(bval) % AsSigned(aval)) : 0, apc, asp);
+                        break;
+                    case 0xA: // AND
                         SetVal(b, (bval & aval) >>> 0, apc, asp);
                         break;
-                    case 0xA: // BOR
+                    case 0xB: // BOR
                         SetVal(b, (bval | aval) >>> 0, apc, asp);
                         break;
-                    case 0xB: // XOR
+                    case 0xC: // XOR
                         SetVal(b, (bval ^ aval) >>> 0, apc, asp);
                         break;
-                    case 0xC: // SHR
+                    case 0xD: // SHR
                         tmp = (bval << 16) >>> aval;
                         Emulator.regs[10] = tmp & 0xFFFF;
                         SetVal(b, (tmp >>> 16) & 0xFFFF, apc, asp);
                         break;
-                    case 0xD: // ASR
+                    case 0xE: // ASR
                         tmp = (bval << 16) >> aval;
                         Emulator.regs[10] = tmp & 0xFFFF;
                         SetVal(b, (tmp >>> 16) & 0xFFFF, apc, asp);
                         break;
-                    case 0xE: // SHL
+                    case 0xF: // SHL
                         tmp = (bval << aval) >>> 0;
                         Emulator.regs[10] = (tmp >>> 16) & 0xFFFF;
                         SetVal(b, tmp & 0xFFFF, apc, asp);
-                        break;
-                    case 0xF: // MVI
-                        SetVal(b, aval, apc, asp);
-                        Emulator.regs[6] = (Emulator.regs[6] + 1) & 0xFFFF;
-                        Emulator.regs[7] = (Emulator.regs[7] + 1) & 0xFFFF;
                         break;
 
                     case 0x10: // IFB
@@ -289,16 +316,16 @@
                         Emulator.regs[11] = (aval != bval);
                         break;
                     case 0x14: // IFG
-                        Emulator.regs[11] = (aval > bval);
+                        Emulator.regs[11] = (bval > aval);
                         break;
                     case 0x15: // IFA
-                        Emulator.regs[11] = (AsSigned(aval) > AsSigned(bval));
+                        Emulator.regs[11] = (AsSigned(bval) > AsSigned(aval));
                         break;
                     case 0x16: // IFL
-                        Emulator.regs[11] = (aval < bval);
+                        Emulator.regs[11] = (bval < aval);
                         break;
                     case 0x17: // IFU
-                        Emulator.regs[11] = (AsSigned(aval) < AsSigned(bval));
+                        Emulator.regs[11] = (AsSigned(bval) < AsSigned(aval));
                         break;
                     case 0x1A: // ADX
                         tmp = bval + aval + Emulator.regs[10];
@@ -311,6 +338,17 @@
                         SetVal(b, (tmp >>> 0) & 0xFFFF, apc, asp);
                         break;
 
+                    case 0x1E: // STI
+                        SetVal(b, aval, apc, asp);
+                        Emulator.regs[6] = (Emulator.regs[6] + 1) & 0xFFFF;
+                        Emulator.regs[7] = (Emulator.regs[7] + 1) & 0xFFFF;
+                        break;
+                    case 0x1F: // STD
+                        SetVal(b, aval, apc, asp);
+                        Emulator.regs[6] = (Emulator.regs[6] + 0xFFFF) & 0xFFFF;
+                        Emulator.regs[7] = (Emulator.regs[7] + 0xFFFF) & 0xFFFF;
+                        break;
+
                     default:
                         Console.Log('*** reserved basic instruction encountered at ' + (Emulator.regs[9] - 1) + '; emulation paused.');
                         Emulator.paused = true;
@@ -321,12 +359,12 @@
         else
         {
             // skipped by IF* prefix
-            Emulator.regs[11] = true;
+            Emulator.regs[11] = (opcode < 0x10) || (opcode > 0x17);
             if ((opcode > 0) && (b >= 0x10) && ((b < 0x18) || (b == 0x1a) || (b == 0x1e) || (b == 0x1f)))
             {
                 Emulator.regs[9] = (Emulator.regs[9] + 1) & 0xFFFF;
             }
-            if ((a >= 0x10) && ((a < 0x18) || (a == 0x1a) || (a == 0x1e) || (b == 0x1f)))
+            if ((a >= 0x10) && ((a < 0x18) || (a == 0x1a) || (a == 0x1e) || (a == 0x1f)))
             {
                 Emulator.regs[9] = (Emulator.regs[9] + 1) & 0xFFFF;
             }
@@ -339,10 +377,10 @@
         if (_code < 0x08) { return [Emulator.regNames[_code], 0]; }
         if (_code < 0x10) { return ['[' + Emulator.regNames[_code - 0x8] + ']', 0]; }
         if (_code < 0x18) { return ['[[PC++]+' + Emulator.regNames[_code - 0x10] + ']', 1]; }
-        if (_code >= 0x20) { return [Console.H16(((_code - 0x21)>>>0)&0xFFFF), 0]; }
+        if (_code >= 0x20) { return [Console.H16(((_code - 0x21) >>> 0) & 0xFFFF), 0]; }
         switch (_code)
         {
-            case 0x18: return [_isa? '[--SP]' : '[SP++]', 0];
+            case 0x18: return [_isa ? '[--SP]' : '[SP++]', 0];
             case 0x19: return ['[SP]', 0];
             case 0x1a: return ['[SP+[PC++]]', 1];
             case 0x1b: return ['SP', 0];
@@ -366,7 +404,7 @@
 
         if (opcode == 0)
         {
-            result += Emulator.extOpNames[opcode] + ' ' + a[0];
+            result += Emulator.extOpNames[(op >>> 5) & 0x1F] + ' ' + a[0];
         }
         else
         {
@@ -377,7 +415,7 @@
                 result += ' ; ';
                 for (var i = 0; i < size; i++)
                 {
-                    result += '$' + Console.H16(Emulator.mem[_addr + (size - i)]) + ' ';
+                    result += '$' + Console.H16(Emulator.mem[_addr + i]) + ' ';
                 }
             }
         }
@@ -530,4 +568,4 @@
         Emulator.timedcycles += Emulator.cycles - startcyc;
     }
 
-})();                                   // (function(){
+})();                                         // (function(){

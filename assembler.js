@@ -111,7 +111,7 @@
 
     function EmitExtendedOp(_name, _acode)
     {
-        Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = (OpMap[_name.toLowerCase()] << 5 | (_acode << 10)) >>> 0;
+        Assembler.BlockAccumulator.block[Assembler.BlockAccumulator.opstart] = ((OpMap[_name.toLowerCase()] << 5) | (_acode << 10)) >>> 0;
     }
 
     Assembler.Grammar =
@@ -128,11 +128,17 @@
             CountAssembledWords(1);
             return (function(n, b, a)
             {
-                return function() { BeginOp(); EmitBasicOp(n, b(), a()); }
+                return function() 
+                { 
+                    BeginOp(); 
+                    var aval = a();
+                    var bval = b();
+                    EmitBasicOp(n, bval, aval); 
+               }
             })(_m[0], _m[2], _m[4]);
         }
         ],
-        extendedop: ["extendedopname operand", function(_m)
+        extendedop: ["extendedopname aoperand", function(_m)
         {
             CountAssembledWords(1);
             return (function(n, a)
@@ -141,11 +147,11 @@
             })(_m[0], _m[1]);
         }
         ],
-        directive: ["dat | origin | ret | halt | brk | shell | def | autobranch"],
+        directive: ["dat | origin | ret | brk | shell | def | autobranch"],
 
         basicopname: ["/\\b(set|add|sub|mul|mli|div|dvi|mod|and|bor|xor|shr|asr|shl|if[bcengalu]|adx|sux)\\b/ /\\s*/",
             function(_m) { return _m[0]; } ],
-        extendedopname: ["/\\b(jsr|int|iag|ias|hwn|hwq|hwi)\\b/ /(,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
+        extendedopname: ["/\\b(?:jsr|int|iag|ias|hwn|hwq|hwi)\\b/ /(\\s*,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
 
         def: ["/[.]?\\bdef\\b\\s*/ identifier /(,\\s*)?/ expression", function(_m)
         {
@@ -194,7 +200,6 @@
         } ],
 
         ret: ["/[.]?\\bret\\b/", function() { CountAssembledWords(1); return function() { EmitBasicOp('set',0x1c,0x18); } } ],
-        halt: ["/[.]?\\bhalt\\b/", function() { CountAssembledWords(1); return function() { EmitBasicOp('add',0x1c,0x20); } } ],
         brk: ["/[.]?\\bbrk\\b/", function() { CountAssembledWords(1); return function() { EmitWord(0x7E0); } } ],
         shell: ["/[.]\\bshell\\b/ /\\s*/ /.+/", function(_m) { Console.Shell(_m[2]); } ],
 
@@ -268,9 +273,9 @@
 
 
         aoperand: ["regindoffset | regindirect | spinc | pcinc"
-                  + " | peek | pop | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
+                  + " | peek | pop | spindirect| reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
         boperand: ["regindoffset | regindirect | spdec | pcinc"
-                  + " | push | peek | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect"],
+                  + " | push | peek | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect"],
 
         labels: ["maybelabels | label"],
         maybelabels: ["label /\\s*/ labels"],
@@ -295,8 +300,8 @@
         reg_pc: ["/;pc\\s*/", function(_m) { return function() { return 0x1c; } } ],
         reg_ex: ["/;ex\\s*/", function(_m) { return function() { return 0x1d; } } ],
         spinc: ["/\\[\\s*;sp\\s*[+][+]\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } } ],
-        spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x1a; } } ],
-        push: ["/(push\\b|\\[;sp[+][+]\\])\\s*/", function(_m) { return function() { return 0x1a; } } ],
+        spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } } ],
+        push: ["/(push\\b|\\[;sp[+][+]\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
         pop: ["/(pop\\b|\\[--;sp\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
         peek: ["/(peek\\b|\\[;sp\\])\\s*/", function(_m) { return function() { return 0x19; } } ],
 
