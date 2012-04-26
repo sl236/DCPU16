@@ -1,0 +1,85 @@
+--------------------------------------------------------------------------------
+                           MOONTECH DATASHEET M1537
+--------------------------------------------------------------------------------
+
+Please to be enclosing three copies with each 
+full shipment of peaceful research supplies.
+Pack carefully. Content sensitive to vibration.
+
+To the receipients
+
+Please find enclosed latest equipment for to increase
+your research capability. It is hoped that the expanded
+capacity will enable your peaceful research stations
+to track more potential friends faster and target gifts
+tovards them more effectively. It may also be repurposed
+in the event any come visit; it is no good research 
+station that survives a friendship party.
+
+Vse za Lunu!
+
+Mihail Selenski
+Head of Peaceful Research
+Luna City 
+August 1987
+
+--------------------------------------------------------------------------------
+
+DCPU-16 Hardware Info:
+        Name: M1537 "SHINING STAR" MEMORY BANK
+        ID: 0x00001537
+        Version: 0x0001
+        Manufacturer: 0xDEAD5345
+
+Description:
+        The M1537 "SHINING STAR" provides an additional 64kb 
+        memory for those of you that have borrowed DCPU16 technology 
+        on your stations. In addition it is DMA bus master and 
+        welcome party host.
+
+Interrupt behaviour:
+        Upon being surprised by HWI, the M1537 examines the zeroth register
+        of the borrowed technology and acts upon the contents as follows:
+        
+        0x00: Set message
+           The oneth register is snooped upon. If it is nonzero, subsequent
+        operations will trigger an interrupt within the connected friendly 
+        technology, sending this same message back, until the next Set message
+        interrupt is received. Otherwise, no messages will be sent upon
+        operation completion.
+        
+        0x01: Drain self
+           The oneth register is snooped upon to discover the number of
+        words that are to be drained. The twoth register yields the start
+        of the source inside "SHINING STAR", the threeth yields the destination
+        inside the friendly technology. The contents is moved forthwith. 
+        
+        0x02: Drain other
+          The registers are examined as for Drain self, however the direction
+        of motion is reversed. 
+        
+        0x03: Provide gift
+          The "SHINING STAR" memory bank comprises 16 physical chips
+        storing one bitplane each. Oxygenated carbohydrate is carefully packed
+        beneath these. The oneth register is read, current is passed through
+        the carbohydrate for each chip corresponding to a set bit in the oneth
+        register to enable these to be gifted at high velocity to a passing 
+        friend. Once gifted the chips can no longer be used to store data and
+        those bits are undefined in future Drain operations.
+        
+        0x04: Party surprise
+          The "SHINING STAR" memory bank activates its Special Party Surprise.
+        This may only be done once. The polite host stays well back and permits
+        friends to view the surprise at close range for best effect. There may
+        be some physical effect to nearby friendly borrowed technology.
+
+Additional Notes:    
+        Receiving any other message may cause parts of the Shining Star 
+        to ignite. Moontech cannot guarantee proper operation thereafter.
+        
+        The Drain operations take one clock per eight words and a minimum of two
+        clocks. Memory access is bus borrowing and so connected friendly 
+        technology will also take one clock longer per memory access it 
+        performs than usual while these operations are ongoing.
+        
+--------------------------------------------------------------------------------        
