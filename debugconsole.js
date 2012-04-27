@@ -433,6 +433,10 @@
         Console.inputArea.value = Console.prompt;
 
         Emulator.Reset();
+        for( var i = 0; i < Peripherals.length; i++ )
+        {
+            Peripherals[i]();
+        }
 
         document.onkeypress = function(e)
         {
@@ -454,7 +458,6 @@
         {
             DebugCommand(unescape(m[1]).replace(/,/g, ' ').split(' '));
         }
-
     }
 
 })();                     // (function(){

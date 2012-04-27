@@ -112,9 +112,6 @@ def screen 0x8000
 :counter dat 0x0
 
 :ISR
-            ; disable concurrent interrupts
-            ias 0
-
             ; back up some values
             set push, c
             set push, i
@@ -139,9 +136,7 @@ def screen 0x8000
             set i, pop
             set c, pop
 
-            set a, pop
-            ias ISR
-            set pc, pop
+            rfi 0
 
 
 :draw_hex ;write the word in c to [screen+i] with bor mask b

@@ -127,23 +127,23 @@
                 return;
             }
 
-            if (Emulator.InterruptQueueEnable && Emulator.regs[13])
+            if (Emulator.regs[13] && !Emulator.InterruptQueueEnable)
             {
                 var interrupt = Emulator.InterruptQueue.shift();
-                Emulator.mem[--Emulator.regs[8]] = Emulator.regs[9];
-                Emulator.mem[--Emulator.regs[8]] = Emulator.regs[0];
+                Emulator.InterruptQueueEnable=1;
+                Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
+                Emulator.mem[Emulator.regs[8]] = Emulator.regs[9];
+                Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
+                Emulator.mem[Emulator.regs[8]] = Emulator.regs[0];
                 Emulator.regs[0] = ((interrupt.Message) >>> 0) & 0xFFFF;
                 Emulator.regs[9] = Emulator.regs[13];
+                Emulator.cycles += 2;
             }
             else
             {
                 if (!Emulator.InterruptQueueEnable)
                 {
-                    var interrupt = Emulator.InterruptQueue.shift();
-                    if (interrupt.onFail)
-                    {
-                        interrupt.onFail();
-                    }
+                    Emulator.InterruptQueue.shift();
                 }
             }
         }
@@ -194,12 +194,14 @@
                         Emulator.regs[13] = aval;
                         break;
 
-                    case 0xB: // IAP a
+                    case 0xB: // RFI a
                         if (Emulator.regs[13] != 0)
                         {
-                            Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
-                            Emulator.mem[Emulator.regs[8]] = Emulator.regs[13];
-                            Emulator.regs[13] = aval;
+                            Emulator.InterruptQueueEnable = 0;
+                            Emulator.regs[0] = Emulator.mem[Emulator.regs[8]];
+                            Emulator.regs[8] = (Emulator.regs[8] + 1) & 0xFFFF;
+                            Emulator.regs[9] = Emulator.mem[Emulator.regs[8]];
+                            Emulator.regs[8] = (Emulator.regs[8]+1)&0xFFFF;
                         }
                         break;
 
@@ -485,9 +487,11 @@
         Emulator.regs[12] = 0xFFFF;
 
         Emulator.MemoryHooks = [];
-        Emulator.Devices = [];
         Emulator.InterruptQueue = [];
-        Emulator.onReset();
+        for( var i = 0; i < Emulator.Devices.length; i++ )
+        {
+            Emulator.Devices[i].hwReset();        
+        }
 
         Console.Log('Ready.');
     }
@@ -523,7 +527,7 @@
         {
             if (((new Date()).getTime() - start) > 5)
             {
-                setTimeout("Emulator.Trace()", 0);
+                setTimeout(Emulator.Trace, 0);
                 return;
             }
 
@@ -552,7 +556,7 @@
             {
                 Emulator.walltime += time;
                 Emulator.timedcycles += Emulator.cycles - startcyc;
-                setTimeout("Emulator.Run()", 0);
+                setTimeout(Emulator.Run, 0);
                 return;
             }
 

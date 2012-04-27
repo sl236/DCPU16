@@ -97,7 +97,7 @@
     int: 0x08,
     iag: 0x09,
     ias: 0x0a,
-    iap: 0x0b,
+    rfi: 0x0b,
     iaq: 0x0c,
     
     hwn: 0x10,
@@ -158,7 +158,7 @@
 
         basicopname: ["/\\b(set|add|sub|mul|mli|div|dvi|mod|mdi|and|bor|xor|shr|asr|shl|if[bcengalu]|adx|sux|sti|std)\\b/ /\\s*/",
             function(_m) { return _m[0]; } ],
-        extendedopname: ["/\\b(?:jsr|hcf|int|iag|ias|iap|iaq|hwn|hwq|hwi)\\b/ /(\\s*,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
+        extendedopname: ["/\\b(?:jsr|hcf|int|iag|ias|rfi|iaq|hwn|hwq|hwi)\\b/ /(\\s*,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
 
         def: ["/[.]?\\bdef\\b\\s*/ identifier /(,\\s*)?/ expression", function(_m)
         {
