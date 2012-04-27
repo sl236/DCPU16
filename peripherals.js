@@ -194,7 +194,7 @@ Peripherals.push(function()
 
     function updatePalette(_addr, _value)
     {
-        if ((paletteBase <= _addr) && ((_paletteBase + 16) > _addr))
+        if ((paletteBase <= _addr) && ((paletteBase + 16) > _addr))
         {
             var entry = _addr - paletteBase;
             var r = ((_value >>> 8) & 0xF) * 0x11;
