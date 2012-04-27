@@ -125,14 +125,15 @@ Peripherals.push(function()
             var td = glyph.td;
             if (!td)
             {
-                var fg = palette[_fgColour];
                 td = glyph.td = glyph.chDC.createImageData(4, 8);
-                for (var j = 0; j < td.data.length; j += 4)
-                {
-                    td.data[j + 0] = fg[0];
-                    td.data[j + 1] = fg[1];
-                    td.data[j + 2] = fg[2];
-                }
+            }
+            
+            var fg=palette[_fgColour];
+            for(var j=0;j<td.data.length;j+=4)
+            {
+                td.data[j + 0] = fg[0];
+                td.data[j + 1] = fg[1];
+                td.data[j + 2] = fg[2];
             }
 
             for (var i = 0; i < 8; i++)
@@ -160,6 +161,7 @@ Peripherals.push(function()
             if (screenDClastFS != paletteStyle[bg])
             {
                 screenDC.fillStyle = paletteStyle[bg];
+                screenDClastFS = paletteStyle[bg];
             }
             screenDC.fillRect(x, y, 4, 8);
             screenDC.drawImage(getGlyph(_value & 0x7F, ((_value >>> 0xC) & 0xF)), x, y);
@@ -232,6 +234,7 @@ Peripherals.push(function()
         if (screenDClastFS != paletteStyle[borderColour])
         {
             screenDC.fillStyle = paletteStyle[borderColour];
+            screenDClastFS = paletteStyle[borderColour];
         }
         screenDC.fillRect(-16, -16, 128 + 16 * 2, 16);
         screenDC.fillRect(-16, 0, 16, 96);
