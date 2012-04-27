@@ -227,7 +227,7 @@
           }
         ],
         stringchar: ["/[^\"'\\\\]/", function(_m) { return _m[0].charCodeAt(0); } ],
-        escape: ["'\\\\' escapecode", function(_m) { return _m[1]; } ],
+        escape: ["'\\' escapecode", function(_m) { return _m[1]; } ],
         escapecode: ["numericescape | onecharescape"],
         onecharescape: ["/./",
         function(_m)
@@ -279,9 +279,9 @@
             ],
 
 
-        aoperand: ["regindoffset | regindirect | spinc | pcinc"
+        aoperand: ["regindoffset | regindirect | pcinc"
                   + " | peek | pop | spindirect| reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
-        boperand: ["regindoffset | regindirect | spdec | pcinc"
+        boperand: ["regindoffset | regindirect | pcinc"
                   + " | push | peek | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal_nextword"],
 
         labels: ["maybelabels | label"],
@@ -306,10 +306,8 @@
         reg_sp: ["/;sp\\s*/", function(_m) { return function() { return 0x1b; } } ],
         reg_pc: ["/;pc\\s*/", function(_m) { return function() { return 0x1c; } } ],
         reg_ex: ["/;ex\\s*/", function(_m) { return function() { return 0x1d; } } ],
-        spinc: ["/\\[\\s*;sp\\s*[+][+]\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } } ],
-        spdec: ["/\\[\\s*--\\s*;sp\\s*\\]\\s*/", function(_m) { return function() { return 0x18; } } ],
-        push: ["/(push\\b|\\[;sp[+][+]\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
-        pop: ["/(pop\\b|\\[--;sp\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
+        push: ["/(push\\b|\\[\\s*;sp\\s*[+][+]\\s*\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
+        pop: ["/(pop\\b|\\[\\s*--\\s*;sp\\s*\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
         peek: ["/(peek\\b|\\[;sp\\])\\s*/", function(_m) { return function() { return 0x19; } } ],
 
         literal: ["expression", function(_m)
@@ -601,7 +599,7 @@
             tokens.push(currtoken);
             for (var j = 0; j < tokens.length; j += 2)
             {
-                tokens[j] = tokens[j].replace(/\b([abcxyzij]|pc|sp|o)\b(?!['])/ig, ';$&');
+                tokens[j] = tokens[j].replace(/\b([abcxyzij]|pc|sp|ex)\b(?!['])/ig, ';$&');
             }
             line = tokens.join('');
 
