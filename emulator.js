@@ -382,7 +382,7 @@
         if (_code >= 0x20) { return [Console.H16(((_code - 0x21) >>> 0) & 0xFFFF), 0]; }
         switch (_code)
         {
-            case 0x18: return [_isa ? '[--SP]' : '[SP++]', 0];
+            case 0x18: return [_isa ? '[SP++]' : '[--SP]', 0];
             case 0x19: return ['[SP]', 0];
             case 0x1a: return ['[SP+[PC++]]', 1];
             case 0x1b: return ['SP', 0];
