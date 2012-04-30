@@ -1,0 +1,435 @@
+; ------------------
+; public API
+; ------------------
+; NB. kernel functions may trash any registers except SP (this includes TaskSwitch).
+; Kernel functions may push up to two words of data to process stack.
+
+def Exit			    0x00	; exit current process
+def Fork			    0x02	; spawn a new process
+def ReadChar		    0x04	; line input to be written in terms of this, its code held in the process that uses it
+def Print				0x06	; writes to the process's screen area, if any, respecting control codes and boundaries
+;
+def TaskSwitch			0x1f
+
+; ------------------
+; kernel implementation
+; ------------------
+
+.org 0
+  set pc, init					; 0x00 exit_impl		
+  set pc, fork_impl				; 0x02
+  set pc, readch_impl			; 0x04
+  set pc, print_impl			; 0x06
+
+; reserved area
+
+.org 0x1e
+	proclist: dat initproc_table	    ; current process table address
+
+; ----- TaskSwitch (0x1f)
+; ----- Assumes return address on stack. Preserves sp, nothing else
+.org TaskSwitch
+taskswitch_impl:
+	set b,	 proclist					; current process table address held here
+	set a,   [b]						; fetch it
+	set [a+kerntable_saved_sp], sp		; store sp there
+	set a,   [a]						; get next process table
+	set [b], a							; store it
+	set sp,  [a+kerntable_saved_sp]		; fetch sp
+	set pc,  pop		                ; resume process
+        		
+; ----- kernel table format
+def kerntable_next    		0
+def kerntable_prev      	1
+def kerntable_block_start	2
+def kerntable_saved_sp     	3
+def kerntable_screen_area	4
+def kerntable_size			(kerntable_screen_area+1)
+
+; ----- Exit
+; ----- Exits current process, releasing its memory and removing it from the task list
+exit_impl:
+  set x, [proclist]	  ; [proclist] is current process (to be deleted)
+  set z, [x]          ; next process
+  set [proclist], z   ; will be current when we're done
+  jsr dll_delete      ; remove from the process list
+  
+  jsr free			  ; release process memory
+	
+	; done! taskswitch to next process
+  set a,    [proclist]				; next process table
+  set sp,   [a + kerntable_saved_sp]	; fetch its sp
+  set pc,   pop						; return there
+
+; ----- malloc
+; ----- allocate X words of memory; returns block table ptr in X
+def align 16
+malloc:
+  set push, a
+  set push, b
+  set push, c
+  set push, z
+  set A, freelist         ; freelist head
+
+1:
+  set A, [A]              ; next block
+  ife A, freelist         ; if we're back at the head
+    set pc, out_of_memory ; then not much we can do
+  set B, A                ; grab a copy
+  sub B, [A + kerntable_block_start]  ; work out how big the block is
+  ifg X, B                ; if we need more memory
+    b 1b                  ; go around
+        
+  set C, B                ; we know B>=X
+  sub C, X                ; so this is always >=0
+  set B, A                ; block start
+  sub B, X                ; new process wants to start here    
+  ifg (align+4), C        ; block too small to split?
+    b 1f                  ; give the caller the whole thing
+  
+  set C, B                      ; new block start
+  sub C, kerntable_size         ; new free block can live here
+  set [C], A													; block detached: its next points to the old block
+  set Z, [A+kerntable_prev]										; (fetch old block's prev)
+  set [C+kerntable_prev], Z										; and its prev to the old block's prev
+  set [A+kerntable_prev], C										; the old block's prev points to the new block
+  set [Z], C													; as does the old block's prev's next
+  set [C+kerntable_block_start], [A+kerntable_block_start]		; the new block starts where the old block used to
+  set [A+kerntable_block_start], B								; and that starts where the new one ends
+  
+1:
+  ; whatever happened, A currently holds a suitable block
+  ; that block is still in the freelist right now so let's detach it
+  set X, A            ; copy block start to X
+  jsr dll_delete      ; remove it from the freelist
+  set z, pop
+  set c, pop
+  set b, pop
+  set a, pop
+  set pc, pop		  ; return
+
+; ----- Free
+; ----- Release memory described by X back to the system. X is trashed.
+free:
+  set push, a
+  set push, b
+  set push, c
+  set push, y
+  
+  set y, freelist     ; head of freelist
+1:
+  set y, [y]          ; next free block
+  ife y, freelist     ; have we come back to the start?
+    b 1f              ; then X should be last in the list; bail
+  ifg x, y            ; if's still before X
+    b 1b              ; keep looking
+1:
+
+  jsr dll_splice      ; insert X here
+  
+  ; if a+kerntable_size == x, we should coalesce them
+  ; likewise if x+kerntable_size == Y, we should coalesce those
+
+  set c, x                ; take a copy of x
+  set b, a                ; copy a
+  add b, kerntable_size   ; add kerntable_size
+  ifn b, x                ; if it's not equal to x
+    b 1f                  ; don't coalesce
+  
+  set [x+kerntable_block_start], [a+kerntable_block_start]  ; the new block starts where a used to
+  set x, a                ; now we can remove a from the freelist
+  jsr dll_delete          ; so do that
+  set x, c                ; put x back for next operation
+    
+1:
+  add c, kerntable_size   ; c still holds a copy of x
+  ifn c, y                ; if that's not equal to y
+    b 1f                  ; don't coalesce
+  
+  set [y+kerntable_block_start], [x+kerntable_block_start]  ; Y now starts where X used to
+  jsr dll_delete          ; and we can remove x from the list
+1:    
+
+  set y, pop
+  set c, pop
+  set b, pop
+  set a, pop
+  set pc, pop
+
+
+; ----- Fork
+; ----- Allocate X words of memory for a new process.
+; ----- New process will have at least X words available between start of its process space and SP, but may have more.
+; ----- Old process's stack will be copied to new process space.
+; ----- Execution will resume in old process space for both processes, however the new process' SP will point to the new stack
+
+def align 16
+fork_impl:
+  set A, [proclist]       ; current process' table
+  sub A, SP               ; area required for current stack
+  add A, (align-1)        ; align to a sensible size: pad
+  and A, ~(align-1)       ; and mask
+  ifg A, X                ; if the result is more than caller asked for
+    set X, A              ; use that instead so we don't crash
+
+  jsr malloc			  ; allocate process memory
+  
+  ; now we need to copy the stack over  
+  set I, [proclist]   ; stack starts at the process table
+  set J, X            ; new stack starts at the new process table
+  
+1:
+  std [J], [I]		  ; copy and decrement
+  ifn I, SP           ; if we've not copied the whole stack
+    b 1b              ; go around
+  set [J], [I]		  ; copy last word
+
+  set [X+kerntable_saved_sp], J ; store new process SP
+  
+  set Y, [proclist]   ; current process table address
+  jsr dll_splice      ; add the new process to the process list
+  set pc, pop         ; we're done
+
+; ------------------
+; internal utility functions, subject to change
+; ------------------
+
+; ----- format_hex
+; places hex representation of A into four words starting at B
+; leaves C and Z trashed, A zeroed
+format_hex: 
+  set z, sp       ; stash a copy of the stack pointer
+  set sp, b       ; we'll use it to generate the string
+  add sp, 4       ; start at the least significant digit
+ 
+1: 
+  set C, A
+  and C, 0xF
+  add C, '0'
+  ifg C, '9'
+    add C, (('A' - '9')-1)
+  set [--sp], C
+  shr a, 4
+  ifn sp, b
+    b 1b
+  
+  set sp, z
+  set pc, pop
+
+; ----- strcpy  
+;  copies null-terminated string at I to J, orring C with each character. I, J point to end of string on exit. Terminating null is not copied. A is zeroed.
+strcpy:
+  set a, [I]    
+  ife a, 0
+    set pc, pop
+  bor a, C
+  sti [J], a
+  b strcpy
+ 
+; ----- dll_delete
+; remove item at X from doubly linked list (and make it form its own valid dll with only itself on it)
+; trashes A, B
+dll_delete:
+  set a, [x]                   ; next
+  set b, [x+kerntable_prev]    ; prev
+  set [a+kerntable_prev], b    ; prev now next's prev
+  set [b], a				   ; next now prev's next
+  set [x], x				   ; fix up curr node's next
+  set [x+kerntable_prev], x    ; and prev
+  set pc, pop				   ; done
+
+; ----- dll_splice
+; splice dll X between Y and Y's prev (new list will go ... Y's prev, X ... X's prev, Y )   Y'<->X<-...->X'<->Y
+; trashes b, returns Y's prev in a
+dll_splice:
+  set a, [y+kerntable_prev]		; Y's prev
+  set [a], x					; Y's prev's next now X
+  set b, [x+kerntable_prev]		; X's prev
+  set [x+kerntable_prev], a		; X's prev now Y's prev
+  set [b], y					; X's prev's next now Y     
+  set [y+kerntable_prev], b		; Y's prev now X's prev  
+  set pc, pop					; done  
+
+
+; ------------------
+; crash handlers
+; ------------------
+
+out_of_memory:
+    set A, oom_message
+    set B, 0x8000
+    set C, 0xC000
+    set push, _crash_terminate
+    set pc, strcpy
+_crash:
+    set B, 0x8000
+    set C, 0xC000
+_crash_terminate:
+    set A, crash_message
+    jsr strcpy    
+    set push Exit
+    set pc, strcpy
+
+oom_message: "Out of memory.", 0
+crash_message: dat "Process terminated:", 0, 0, 0, 0, 0
+
+; ------------------
+; kernel internal data structures
+; ------------------
+freelist:		dat freemem_first		; freelist next pointer
+				dat freemem_last		; freelist prev pointer
+				dat freelist			; freelist head block start
+
+screen_device_id:		dat 0xffff
+screen_vram:			dat 0
+screen_charmap:			dat 0
+screen_palette:			dat 0
+screen_block_handle:	dat 0
+
+keyboard_device_id:	dat 0xffff
+clock_device_id:	dat 0xffff
+
+; ------------------
+; ReadCh
+; ------------------
+readch_impl:
+	set pc, readch_impl ; TODO
+		
+; ------------------
+; Print
+; ------------------
+print_impl:
+	set pc, print_impl ; TODO
+
+; ------------------
+; idle process
+; ------------------
+idleproc_entry:
+	set push, idleproc_entry	; reschedule our entrypoint
+	set pc, TaskSwitch			; and go taskswitch	
+	
+idleproc_sp:
+  dat 0, 0, 0, 0, 0, 0, 0, idleproc_entry
+  
+idleproc_table:
+  dat initproc_table    ; next
+  dat initproc_table    ; prev
+  dat idleproc_entry    ; block start
+  dat idleproc_sp       ; sp
+  dat 0					; owned screen area
+
+
+; ------------------
+; boot process
+; ------------------
+init_start:
+  .org init_start + 0x20      ; reserve some memory
+  
+init:  
+  set [1], exit_impl		  ; the jump at location 0 needs to go to the Exit implementation
+  set sp, initproc_table      ; at boot, the stack pointer was not set up for us
+  
+	; -- Device enumeration
+  set i, 0					  ; running device count
+  hwn j						  ; total number of devices
+   
+init_hw:
+	ife i, j				  ; enumerated everything?
+		set pc, init_hw_end	  ; bail
+	
+	hwq i					  ; fetch device params into a+b, c, x+y
+	
+	; LEM1802 Low Energy Monitor - http://dcpu.com/highnerd/rc_1/lem1802.txt
+	ife b, 0x7349
+	ife a, 0xf615
+		set pc, init_hw_lem1802
+
+	; Generic Keyboard (compatible) - http://dcpu.com/highnerd/rc_1/keyboard.txt
+	ife b, 0x30cf
+	ife a, 0x7406
+		set pc, init_hw_generic_keyboard
+
+	; Generic Clock (compatible) - http://dcpu.com/highnerd/rc_1/clock.txt
+	ife b, 0x12d0
+	ife a, 0xb402
+		set pc, init_hw_generic_clock
+
+init_hw_next:
+	add i, 1							; next device ID
+	set pc, init_hw						; go around
+
+init_hw_lem1802:
+	ifn [screen_device_id], 0xffff
+		set pc, init_hw_next
+	set [screen_device_id], i
+	
+	set X, 0x180 + 0x100 + 0x10			; vram, charmap, palette
+	jsr malloc							; allocate memory for these
+	set [screen_block_handle], X		; store the block handle
+	set b, [X+kerntable_block_start]	; start of allocated area
+	set [screen_vram], b				; that's the VRAM
+	set a, 0							; MEM_MAP_SCREEN
+	hwi i								; map it
+	add b, 0x180						; after the VRAM, the charmap
+	set [screen_charmap], b				; store it
+	set a, 4							; MEM_DUMP_FONT
+	hwi i								; populate it with defaults
+	set a, 1							; MEM_MAP_FONT
+	hwi i								; map it
+	add b, 0x100						; after the charmap, the palette ram
+	set [screen_palette], b				; store it
+	set a, 5							; MEM_DUMP_PALETTE
+	hwi i								; populate it with defaults	
+	set a, 2							; MEM_MAP_PALETTE
+	hwi i								; map it
+	set pc, init_hw_next				; done
+
+init_hw_generic_keyboard:
+	ifn [keyboard_device_id], 0xffff
+		set pc, init_hw_next
+	set [keyboard_device_id], i
+	
+	set pc, init_hw_next
+
+init_hw_generic_clock:
+	ifn [clock_device_id], 0xffff
+		set pc, init_hw_next
+	set [clock_device_id], i
+	
+	set pc, init_hw_next
+		
+init_hw_end:
+	; -- done initialising devices
+	
+	set i, message
+	set j, [screen_vram]
+	set c, 0x7c00
+	jsr strcpy
+	
+1:
+	b 1b	; TODO
+
+message: 
+	dat "OK", 0
+
+initproc_stack_bottom:
+.org initproc_stack_bottom + 0x20	; some memory for the stack
+initproc_table:
+  dat idleproc_table    ; next
+  dat idleproc_table    ; prev
+  dat init_start        ; block start
+  dat initproc_table    ; no stack
+  dat 0					; no owned screen area
+
+; ------------------
+; End of kernel
+; Rest of memory is available on boot
+; ------------------
+kernel_end: 
+
+.org 0 - kerntable_size
+freemem_first:
+freemem_last:
+	dat freelist   		; next
+	dat freelist		; prev
+	dat kernel_end 		; block start

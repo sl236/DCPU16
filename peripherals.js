@@ -324,14 +324,14 @@ Peripherals.push(function()
             case 4:
                 for (var i = 0; i < 0x100; i++)
                 {
-                    Emulator.mem[Emulator.regs[1] + i] = defaultFont[i];
+                    Emulator.WriteMem(Emulator.regs[1] + i, defaultFont[i]);
                 }
                 return 0x100;
 
             case 5:
                 for (var i = 0; i < 0x10; i++)
                 {
-                    Emulator.mem[Emulator.regs[1] + i] = defaultPalette[i];
+                    Emulator.WriteMem(Emulator.regs[1] + i, defaultPalette[i]);
                 }
                 return 0x10;
         }

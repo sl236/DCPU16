@@ -306,8 +306,8 @@
         reg_sp: ["/;sp\\s*/", function(_m) { return function() { return 0x1b; } } ],
         reg_pc: ["/;pc\\s*/", function(_m) { return function() { return 0x1c; } } ],
         reg_ex: ["/;ex\\s*/", function(_m) { return function() { return 0x1d; } } ],
-        push: ["/(push\\b|\\[\\s*;sp\\s*[+][+]\\s*\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
-        pop: ["/(pop\\b|\\[\\s*--\\s*;sp\\s*\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
+        push: ["/(push\\b|\\[\\s*--\\s*;sp\\s*\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
+        pop: ["/(pop\\b|\\[\\s*;sp\\s*[+][+]\\s*\\])\\s*/", function(_m) { return function() { return 0x18; } } ],
         peek: ["/(peek\\b|\\[;sp\\])\\s*/", function(_m) { return function() { return 0x19; } } ],
 
         literal: ["expression", function(_m)
