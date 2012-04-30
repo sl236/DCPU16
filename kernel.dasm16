@@ -196,43 +196,37 @@ fork_impl:
 
 ; ----- format_hex
 ; places hex representation of A into four words starting at B, ORing with C
-; A is trashed
-format_hex: 
-  set push, y
+format_hex:
+  set push, a 
   set push, x
-  
-  set y, a
+
+  set x, a
+  and x, 0xF
+  set x, [x+format_hex_data]
+  bor x, c
+  set [b+3], x
   shr a, 4
-  and y, 0x0F0F
-  and a, 0x0F0F
-  add y, 0x3030
-  add a, 0x3030
-  set x, y
-  and y, 0xFF
-  ifg y, '9'
-    add y, (('A' - '9')-1)
-  bor y, c
-  set [b+3], y
-  set y, a
-  and y, 0xFF
-  ifg y, '9'
-    add y, (('A' - '9')-1)
-  bor y, c
-  set [b+2], y
-  shr x, 8
-  ifg x, '9'
-    add x, (('A' - '9')-1)
+  set x, a
+  and x, 0xF
+  set x, [x+format_hex_data]
+  bor x, c
+  set [b+2], x
+  shr a, 4
+  set x, a
+  and x, 0xF
+  set x, [x+format_hex_data]
   bor x, c
   set [b+1], x
-  shr a, 8
-  ifg a, '9'
-    add a, (('A' - '9')-1)
+  shr a, 4
+  set a, [a+format_hex_data]
   bor a, c
   set [b], a
   
-  set x, pop
-  set y, pop
+  set x, pop  
+  set a, pop  
   set pc, pop
+  
+format_hex_data: dat "0123456789ABCDEF"
 
 ; ----- strcpy  
 ;  copies null-terminated string at I to J, orring C with each character. I, J point to end of string on exit. Terminating null is not copied. A is zeroed.
