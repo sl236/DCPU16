@@ -177,13 +177,13 @@
           }
 
           var addr = parseInt(_args.shift(), 16);
-          var line = (_addr & 0xfff0);
+          var line = (addr & 0xfff0);
           var data;
           while ((data = _args.shift()) != undefined)
           {
               Emulator.WriteMem(addr++, parseInt(data, 16));
           }
-          while (line < _addr)
+          while (line < addr)
           {
               Emulator.Dump([line]);
               line += 0x10;
