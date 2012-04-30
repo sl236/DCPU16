@@ -30,7 +30,11 @@ var Emulator =
     InterruptQueue: [],
     InterruptQueueEnable: 0,
     EventQueue: [],
-    MemoryHooks: []
+    MemoryHooks: [],
+    BackTrace: null,
+    JSRHistory: null,
+    BackTraceMax: 32,
+    JSRHistoryMax: 256
 };
 
 var Assembler =

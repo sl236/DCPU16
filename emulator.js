@@ -114,11 +114,23 @@
     {
         return (_x < 0x7FFF) ? _x : -(((~(_x) + 1) >>> 0) & 0xFFFF);
     }
+    
+    function LogJSR( _type )
+    {
+        if(Emulator.JSRHistory)
+        {
+            if(Emulator.JSRHistory.length>Emulator.JSRHistoryMax)
+            {
+                Emulator.JSRHistory.shift();
+            }
+            Emulator.JSRHistory.push([Emulator.regs[9],Emulator.regs[8],_type]);
+        }    
+    }
 
     // -----------------------
     Emulator.Step = function()
     {
-        if (Emulator.InterruptQueue.length)
+        if (Emulator.regs[11] && Emulator.InterruptQueue.length)
         {
             if (Emulator.InterruptQueue.length >= 256)
             {
@@ -129,6 +141,8 @@
 
             if (Emulator.regs[13] && !Emulator.InterruptQueueEnable)
             {
+                LogJSR("HWI");
+            
                 var interrupt = Emulator.InterruptQueue.shift();
                 Emulator.InterruptQueueEnable=1;
                 Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
@@ -172,7 +186,8 @@
                 switch (b)
                 {
                     case 0x1: // JSR a
-                        Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
+                        LogJSR("JSR");                        
+                        Emulator.regs[8]=(Emulator.regs[8]+0xFFFF)&0xFFFF;
                         Emulator.WriteMem(Emulator.regs[8], Emulator.regs[9]);
                         Emulator.regs[9] = aval;
                         break;
@@ -439,8 +454,8 @@
         return [result, size + 1];
     }
 
-    // -----------------------
-    Emulator.Status = function()
+    // -----------------------   
+    Emulator.GetStatusString = function()
     {
         var stat = '';
         for (var i = 0; i < Emulator.regNames.length; i++)
@@ -459,7 +474,12 @@
             stat += ' ; ( will skip ) ';
         }
 
-        Console.Log(stat);
+        return stat;
+    }
+    
+    Emulator.Status = function()
+    {
+        Console.Log(Emulator.GetStatusString());
     }
 
     // -----------------------
@@ -485,6 +505,8 @@
 
         Emulator.regs[11] = 1;
         Emulator.regs[12] = 0xFFFF;
+        Emulator.BackTrace = Emulator.BackTrace ? [] : null;
+        Emulator.JSRHistory = Emulator.JSRHistory ? [] : null;
 
         Emulator.MemoryHooks = [];
         Emulator.InterruptQueue = [];
@@ -545,6 +567,7 @@
     // -----------------------
     Emulator.Run = function()
     {
+        var pausedOnEntry = Emulator.paused;
         var start = (new Date()).getTime();
         var time = start;
         var startcyc = Emulator.cycles;
@@ -564,6 +587,31 @@
             while ((!Emulator.paused) && ((Emulator.cycles - cycles) < 1000))
             {
                 Emulator.Step();
+                if( Emulator.BackTrace )
+                {
+                    if(Emulator.BackTrace.length > Emulator.BackTraceMax)
+                    {
+                        Emulator.BackTrace.shift();
+                    }
+                    Emulator.BackTrace.push(Emulator.GetStatusString());                
+                }
+            }
+        }
+        
+        if( !pausedOnEntry && Emulator.paused )
+        {
+            if( Emulator.BackTrace && Emulator.BackTrace.length )
+            {
+                Console.Log("Execution history: ");
+                Console.Log(Emulator.BackTrace.join("\n"));            
+            }
+            if( Emulator.JSRHistory && Emulator.JSRHistory.length )
+            {
+                Console.Log("JSR history: ");
+                for(var i=0;i<Emulator.JSRHistory.length;i++)
+                {
+                    Console.Log( Emulator.JSRHistory[i][2] + "/" + Console.H16(Emulator.JSRHistory[i][1]) + " " + Emulator.Disassemble( Emulator.JSRHistory[i][0] ) );
+                }            
             }
         }
 
