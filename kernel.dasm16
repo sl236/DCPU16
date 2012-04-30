@@ -195,25 +195,43 @@ fork_impl:
 ; ------------------
 
 ; ----- format_hex
-; places hex representation of A into four words starting at B
-; leaves C and Z trashed, A zeroed
+; places hex representation of A into four words starting at B, ORing with C
+; A is trashed
 format_hex: 
-  set z, sp       ; stash a copy of the stack pointer
-  set sp, b       ; we'll use it to generate the string
-  add sp, 4       ; start at the least significant digit
- 
-1: 
-  set C, A
-  and C, 0xF
-  add C, '0'
-  ifg C, '9'
-    add C, (('A' - '9')-1)
-  set [--sp], C
-  shr a, 4
-  ifn sp, b
-    b 1b
+  set push, y
+  set push, x
   
-  set sp, z
+  set y, a
+  shr a, 4
+  and y, 0x0F0F
+  and a, 0x0F0F
+  add y, 0x3030
+  add a, 0x3030
+  set x, y
+  and y, 0xFF
+  ifg y, '9'
+    add y, (('A' - '9')-1)
+  bor y, c
+  set [b+3], y
+  set y, a
+  and y, 0xFF
+  ifg y, '9'
+    add y, (('A' - '9')-1)
+  bor y, c
+  set [b+2], y
+  shr x, 8
+  ifg x, '9'
+    add x, (('A' - '9')-1)
+  bor x, c
+  set [b+1], x
+  shr a, 8
+  ifg a, '9'
+    add a, (('A' - '9')-1)
+  bor a, c
+  set [b], a
+  
+  set x, pop
+  set y, pop
   set pc, pop
 
 ; ----- strcpy  
@@ -405,6 +423,11 @@ init_hw_end:
 	set j, [screen_vram]
 	set c, 0x7c00
 	jsr strcpy
+  
+  set a, 0x34AB
+  set b, [screen_vram]
+  add b, 32
+  jsr format_hex  
 	
 1:
 	b 1b	; TODO
