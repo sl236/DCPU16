@@ -37,7 +37,7 @@
                 return Emulator.mem[Emulator.regs[_code - 8]];
             case 16:
                 Emulator.cycles++;
-                var result = Emulator.mem[Emulator.mem[Emulator.regs[9]] + Emulator.regs[_code - 0x10]];
+                var result = Emulator.mem[((Emulator.mem[Emulator.regs[9]] + Emulator.regs[_code - 0x10])>>>0)&0xFFFF];
                 Emulator.regs[9] = (Emulator.regs[9] + 1) & 0xFFFF;
                 return result;
         }
@@ -460,14 +460,11 @@
         var stat = '';
         for (var i = 0; i < Emulator.regNames.length; i++)
         {
-            stat += Emulator.regNames[i] + ':' + Console.H16(Emulator.regs[i]) + '  ';
+            stat += Emulator.regNames[i] + ':' + Console.H16(Emulator.regs[i]) + ' ';
         }
+        stat += Emulator.InterruptQueueEnable ? "Q" : "I";
+        stat += Console.H8(Emulator.InterruptQueue.length) + " ";
         stat += Emulator.cycles + 'cyc ';
-        if (Emulator.timedcycles && Emulator.walltime)
-        {
-            var khz = Math.floor(Emulator.cycles / Emulator.walltime);
-            stat += khz + 'khz'
-        }
         stat += '\n' + Emulator.Disassemble(Emulator.regs[9])[0];
         if (!Emulator.regs[11])
         {

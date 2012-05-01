@@ -280,7 +280,7 @@
 
 
         aoperand: ["regindoffset | regindirect | pcinc"
-                  + " | peek | pop | spindirect| reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
+                  + " | peek | pop | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
         boperand: ["regindoffset | regindirect | pcinc"
                   + " | push | peek | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal_nextword"],
 
