@@ -47,8 +47,7 @@ def kerntable_next    		0
 def kerntable_prev      	1
 def kerntable_block_start	2
 def kerntable_saved_sp     	3
-def kerntable_screen_area	4
-def kerntable_size			(kerntable_screen_area+1)
+def kerntable_size			(kerntable_saved_sp+1)
 
 ; ----- Exit
 ; ----- Exits current process, releasing its memory and removing it from the task list
@@ -349,7 +348,7 @@ clock_device_id:	dat 0xffff
 clock_time:			dat 0, 0
 
 ; ------------------
-; ReadCh
+; ReadChar
 ; If B is nonzero, blocks until a key is typed; otherwise, returns immediately.
 ; Returns key code in C, or 0 if none available.
 ; Blocking form will trash all registers.
@@ -399,7 +398,7 @@ idleproc_entry:
 		b 1f
 	
 	set A, [clock_time+1]
-	set B, idleproc_statusline+2
+	set B, idleproc_statusline
 	set C, 0
 	jsr format_hex
 	set A, [clock_time]
@@ -408,7 +407,7 @@ idleproc_entry:
 	set I, idleproc_statusline
 	set J, [screen_vram]
 	add J, 32*11
-	set C, 0x0700
+	set C, 0x2000
 	jsr strcpy
 	
 1:
@@ -417,7 +416,7 @@ idleproc_entry:
 	
 idleproc_statusline:
 	;	 0123456789ABCDEF0123456789ABCDEF
-	dat	"- 0123:4567 --------------------", 0
+	dat	"0123:4567 ----------------------", 0
 		
 	RESERVE_WORDS( 0x20 )	; stack space
 	
@@ -429,8 +428,32 @@ idleproc_table:
 	dat initproc_table		; prev
 	dat idleproc_entry		; block start
 	dat idleproc_sp			; sp
-	dat 0					; owned screen area
 
+; ------------------
+; shell
+; ------------------
+shellproc_start:
+	
+
+shellproc_entry:
+	sub pc, 1				; todo
+	
+
+shellproc_readline:
+	set B, 1
+	jsr ReadChar
+	
+	
+	
+	RESERVE_WORDS( 0x20 )	; stack space
+shellproc_sp:
+	dat shellproc_entry
+		
+shellproc_table:
+	dat shellproc_table		; next
+	dat shellproc_table		; prev
+	dat shellproc_start		; block start
+	dat shellproc_sp		; sp
 
 ; ------------------
 ; boot process
@@ -538,7 +561,6 @@ initproc_table:
   dat idleproc_table    ; prev
   dat init_start        ; block start
   dat initproc_table    ; no stack
-  dat 0					; no owned screen area
 
 ; ------------------
 ; End of kernel
