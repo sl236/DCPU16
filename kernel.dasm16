@@ -19,7 +19,7 @@ macro RESERVE_WORDS(_x)
 endm
 
 .org 0
-  set pc, init					; 0x00 exit_impl		
+  set pc, init					  ; 0x00 exit_impl		
   set pc, fork_impl				; 0x02
   set pc, readch_impl			; 0x04
 
@@ -312,16 +312,16 @@ isr_handle_clock:
 ; ------------------
 
 out_of_memory:
-    set A, oom_message
-    set B, 0x8000
-    set C, 0xC000
+    set i, oom_message
+    set j, [screen_vram]
+    set c, 0xC000
     set push, _crash_terminate
     set pc, strcpy
 _crash:
-    set B, 0x8000
-    set C, 0xC000
+    set j, [screen_vram]
+    set c, 0xC000
 _crash_terminate:
-    set A, crash_message
+    set i, crash_message
     jsr strcpy    
     set push Exit
     set pc, strcpy
@@ -375,13 +375,13 @@ readch_reentry:
 		b 1f		
 	
 	iaq 1
-	set X, [proclist]
-	set [proclist], [X]
-	set [keyboard_wait_proc], X
+	set x, [proclist]
+	set [proclist], [x]
+	set [keyboard_wait_proc], x
 	jsr dll_delete
 	set push, readch_reentry
-	set [X+kerntable_saved_sp], sp
-	set x, [x]
+	set [x+kerntable_saved_sp], sp
+	set x, [proclist]
 	set sp, [x+kerntable_saved_sp]
 	iaq 0
 	set pc, pop
@@ -427,33 +427,162 @@ idleproc_table:
 	dat initproc_table		; next
 	dat initproc_table		; prev
 	dat idleproc_entry		; block start
-	dat idleproc_sp			; sp
+	dat idleproc_sp			  ; sp
+.org idleproc_table + kerntable_size
 
 ; ------------------
 ; shell
 ; ------------------
 shellproc_start:
-	
 
+def SCREEN_ROWS     12
+def SCREEN_COLUMNS  32
+def SHELL_ROWS      6
+def SHELL_COLOUR    0x2000
+
+; ---- data area
+
+shellproc_line_buffer_memory:
+  RESERVE_WORDS( SCREEN_COLUMNS )
+shellproc_line_buffer_memory_end:
+
+shellproc_line_cursor:
+  dat 0
+shellproc_line_end:
+  dat 0
+
+shellproc_line_vram_start:
+  dat 0  
+shellproc_line_vram_curr:
+  dat 0
+
+
+; ---- entrypoint
 shellproc_entry:
-	sub pc, 1				; todo
-	
+	set i, [shellproc_line_vram_start]  ; VRAM start
+  set j, i
+  add j, SCREEN_COLUMNS               ; next row down
+  set x, i
+  add x, (SCREEN_COLUMNS * (SHELL_ROWS-1))  ; end of scroll area
 
-shellproc_readline:
-	set B, 1
-	jsr ReadChar
-	
-	
+1:
+  sti [i], [j]  ; copy to row above
+  ifn i, x      ; end of area?
+    b 1b        ; no, go around
+  
+  set [shellproc_line_vram_curr], i   ; line entry will be here
+  set i, x                            ; need to clear the line
+  add x, SHELL_ROWS
+1:
+  sti [i], 0
+  ifn i, x
+    b 1b
+  
+  set [shellproc_line_cursor], shellproc_line_buffer_memory
+  set [shellproc_line_end], shellproc_line_buffer_memory+1
+  set [shellproc_line_buffer_memory], 0
+
+shellproc_readline_loop:
+	set B, 1              ; use blocking form
+	jsr ReadChar          ; fetch next char
+  
+  ifl C, 0x1e                 ; editing char?
+    set pc, shellproc_handle_edit   ; handle that
+  ifg C, 0x7f                 ; arrow or control?
+	  set pc, shellproc_handle_arrow  ; handle that
+
+  ; insert regular character
+  set i, [shellproc_line_end]               ; current end of line
+  ife i, shellproc_line_buffer_memory_end   ; out of memory?
+    b shellproc_readline_loop               ; drop the keypress
+
+  set x, [shellproc_line_cursor]            ; current cursor pos
+  set j, i                                  ; line end
+  add i, 1                                  ; we're adding a character
+1:
+  std [i], [j]                              ; shuffle characters up
+  ifn j, x                                  ; at cursor position?
+    b 1b                                    ; no, keep shuffling
+
+  set [x], c                                ; new character goes here  
+  add [shellproc_line_cursor], 1            ; cursor moves on one character
+  add [shellproc_line_end], 1               ; as does end of line
+
+shellproc_update_screen:
+  jsr TaskSwitch
+
+  set i, [shellproc_line_vram_curr]
+  set x, i
+  add x, SCREEN_COLUMNS
+1:
+  sti [i], 0
+  ifn i, x
+    b 1b
+  set i, shellproc_line_buffer_memory       ; update display: from buffer memory
+  set j, [shellproc_line_vram_curr]         ; to VRAM
+  set c, SHELL_COLOUR                       ; using the shell colour
+  jsr strcpy                                ; and copy
+  
+  set a, [shellproc_line_vram_curr]
+  add a, [shellproc_line_cursor]
+  sub a, shellproc_line_buffer_memory
+  bor [a], 0x0200
+  
+  set pc, shellproc_readline_loop           ; next character
+  
+  
+  
+shellproc_handle_edit:
+  ifl c, 0x10
+    set pc, shellproc_readline_loop
+  ifg c, 0x13
+    set pc, shellproc_readline_loop
+  set pc, [c + shellproc_edit_handlers - 0x10];
+shellproc_edit_handlers:
+    dat shellproc_handle_backspace
+    dat shellproc_handle_return
+    dat shellproc_handle_insert
+    dat shellproc_handle_delete
+
+shellproc_handle_backspace:
+    set x, [shellproc_line_end]
+    ife x, (shellproc_line_buffer_memory+1)
+        set pc, shellproc_readline_loop
+    set i, [shellproc_line_cursor]
+    set j, i
+    add j, 1
+1:
+    sti [i], [j]
+    ifn i, x
+        b 1b
+    set [i], 0
+    sub [shellproc_line_cursor], 1
+    sub [shellproc_line_end], 1
+    set pc, shellproc_update_screen
+    
+shellproc_handle_return:
+    set pc, shellproc_entry ; todo
+        
+shellproc_handle_insert:    
+    set pc, shellproc_readline_loop ; todo
+    
+shellproc_handle_delete:    
+    set pc, shellproc_readline_loop ; todo
+  
+shellproc_handle_arrow:
+  set pc, shellproc_readline_loop ; todo
+  	
 	
 	RESERVE_WORDS( 0x20 )	; stack space
 shellproc_sp:
 	dat shellproc_entry
-		
+  		
 shellproc_table:
 	dat shellproc_table		; next
 	dat shellproc_table		; prev
 	dat shellproc_start		; block start
-	dat shellproc_sp		; sp
+	dat shellproc_sp		  ; sp
+.org shellproc_table + kerntable_size
 
 ; ------------------
 ; boot process
@@ -461,8 +590,8 @@ shellproc_table:
 init_start:  
 init:  
   set [1], exit_impl			; the jump at location 0 needs to go to the Exit implementation
-  set sp, initproc_table		; at boot, the stack pointer was not set up for us
-  ias isr_entry					; can now handle interrupts
+  set sp, initproc_table	; at boot, the stack pointer was not set up for us
+  ias isr_entry					  ; can now handle interrupts
   
 	; -- Device enumeration
   set i, 0						; running device count
@@ -533,7 +662,7 @@ init_hw_generic_clock:
 		set pc, init_hw_next		; can only deal with one right now
 	set [clock_device_id], i		; store the device ID	
 	set a, 0						; set timebase
-	set b, 3						; tick at 20Hz
+	set b, 60						; tick at 1Hz
 	hwi i							; send that
 	set a, 2						; enable clock interrupts
 	set b, isr_handle_clock			; handler address as the message
@@ -542,25 +671,48 @@ init_hw_generic_clock:
 		
 init_hw_end:
 	; -- done initialising devices
-	
-	set i, message
-	set j, [screen_vram]
-	set c, 0x7c00
-	jsr strcpy
-  	
+  ife [screen_vram], 0  ; do we have a memory-mapped screen?
+    sub pc, 1           ; if not, we don't know how to continue.
+    
+  ; populate screen with init_message
+  set i, init_message     ; message data
+  set j, [screen_vram]    ; start of VRAM
+  set [shellproc_line_vram_start], j  ; tell the shell where it is
+  add j, SCREEN_COLUMNS   ; shell will scroll console up on entry, so no point writing anything to top line
 1:
-	jsr TaskSwitch
-	b 1b	; TODO
+  set c, [i]              ; fetch colour
+  ife c, 0                ; if it's zero
+    b 1f                  ;   we're done
+  add i, 1                ; skip over colour
+  jsr strcpy              ; copy text
+  add i, 1                ; skip over null terminator
+  b 1b                    ; go around
+1:
 
-message: 
-	dat "OK", 0
+
+  ; can now hand over to shell
+  iaq 1                   ; critical section
+  set x, shellproc_table  ; shell process table
+  set y, [proclist]       ; current process
+  jsr dll_splice          ; splice shell process in just before us
+  iaq 0                   ; end of critical section
+
+  set pc, Exit            ; release init process memory to system
+
+init_message:
+;              0123456789ABCDEF0123456789ABCDEF
+  dat 0x2000, "MoonOS 0.1                      ", 0
+  dat 0x2000, "Luna City 1985                  ", 0
+  dat 0
 
 	RESERVE_WORDS( 0x20 )	; stack
+  
 initproc_table:
   dat idleproc_table    ; next
   dat idleproc_table    ; prev
   dat init_start        ; block start
   dat initproc_table    ; no stack
+.org initproc_table + kerntable_size
 
 ; ------------------
 ; End of kernel

@@ -507,6 +507,7 @@
 
         Emulator.MemoryHooks = [];
         Emulator.InterruptQueue = [];
+        Emulator.InterruptQueueEnable = 0;
         for( var i = 0; i < Emulator.Devices.length; i++ )
         {
             Emulator.Devices[i].hwReset();        
