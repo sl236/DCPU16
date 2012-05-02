@@ -57,6 +57,7 @@ Peripherals.push(function()
     var vramBase = 0;
     var fontBase = 0;
     var paletteBase = 0;
+    var blinkOn = 0;
 
     for (var i = 0; i < 128; i++)
     {
@@ -164,7 +165,10 @@ Peripherals.push(function()
                 screenDClastFS = paletteStyle[bg];
             }
             screenDC.fillRect(x, y, 4, 8);
-            screenDC.drawImage(getGlyph(_value & 0x7F, ((_value >>> 0xC) & 0xF)), x, y);
+            if( (!(_value & 0x80)) || blinkOn )
+            {
+               screenDC.drawImage(getGlyph(_value&0x7F,((_value>>>0xC)&0xF)),x,y);            
+            }
         }
     }
 
@@ -376,6 +380,23 @@ Peripherals.push(function()
         updateBorder( 0 );            
     }
     
+    function onToggleBlink()
+    {
+        blinkOn = !blinkOn;
+        if( vramBase )
+        {        
+            for (var i = vramBase; i < (vramBase + 0x180); i++)
+            {
+                if( Emulator.mem[i] & 0x80 )
+                {
+                    updateScreen( i, Emulator.mem[i] );
+                }
+            }
+        }
+        
+        setTimeout( onToggleBlink, blinkOn ? 650 : 350 );
+    }
+    
     var deviceDesc = // http://dcpu.com/highnerd/lem1802.txt
     {
         hwType: 0x7349f615,
@@ -386,7 +407,7 @@ Peripherals.push(function()
     };
 
     Emulator.Devices.push(deviceDesc);
-    
+    setTimeout( onToggleBlink, 500 );
 });
 
 

@@ -703,6 +703,9 @@ init_message:
 ;              0123456789ABCDEF0123456789ABCDEF
   dat 0x2000, "MoonOS 0.1                      ", 0
   dat 0x2000, "Luna City 1985                  ", 0
+  dat 0x2000, "                                ", 0
+  dat 0x2000, "                                ", 0  
+  dat 0x2000, "                                ", 0
   dat 0
 
 	RESERVE_WORDS( 0x20 )	; stack
