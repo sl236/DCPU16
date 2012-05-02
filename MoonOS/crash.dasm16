@@ -1,0 +1,21 @@
+; ------------------
+; crash handlers
+; ------------------
+
+out_of_memory:
+    set i, oom_message
+    set j, [screen_vram]
+    set c, 0xC000
+    set push, _crash_terminate
+    set pc, strcpy
+_crash:
+    set j, [screen_vram]
+    set c, 0xC000
+_crash_terminate:
+    set i, crash_message
+    jsr strcpy    
+    set push Exit
+    set pc, strcpy
+
+oom_message: "Out of memory.", 0
+crash_message: dat "Process terminated:", 0, 0, 0, 0, 0

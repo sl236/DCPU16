@@ -39,7 +39,8 @@ var Emulator =
 
 var Assembler =
 {
-    Program: ''
+    Program: '',
+    CurrFile: []
 };
 
 var Peripherals = 

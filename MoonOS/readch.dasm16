@@ -1,0 +1,42 @@
+; ------------------
+; ReadChar
+; If B is nonzero, blocks until a key is typed; otherwise, returns immediately.
+; Returns key code in C, or 0 if none available.
+; Blocking form will trash all registers.
+; ------------------
+readch_impl:
+    set push, A
+    set push, B
+
+readch_reentry:    
+    set A, 1
+	set C, 0		
+	ifn [keyboard_device_id], 0xffff
+		hwi [keyboard_device_id]
+	set B, pop
+	set A, pop
+	ife B, 0
+	    set pc, pop	    
+	ifn C, 0
+	    set pc, pop
+	    
+    set push, A
+    set push, B
+	ifn [keyboard_wait_proc], 0
+		b 1f		
+	
+	iaq 1
+	set x, [proclist]
+	set [proclist], [x]
+	set [keyboard_wait_proc], x
+	jsr dll_delete
+	set push, readch_reentry
+	set [x+kerntable_saved_sp], sp
+	set x, [proclist]
+	set sp, [x+kerntable_saved_sp]
+	iaq 0
+	set pc, pop
+	
+1:
+	jsr TaskSwitch
+	set pc, readch_reentry

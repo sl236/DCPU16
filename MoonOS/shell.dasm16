@@ -1,0 +1,153 @@
+; ------------------
+; shell
+; ------------------
+shellproc_start:
+
+def SCREEN_ROWS     12
+def SCREEN_COLUMNS  32
+def SHELL_ROWS      6
+def SHELL_COLOUR    0x2000
+
+; ---- data area
+
+shellproc_line_buffer_memory:
+  RESERVE_WORDS( SCREEN_COLUMNS )
+shellproc_line_buffer_memory_end:
+
+shellproc_line_cursor:
+  dat 0
+shellproc_line_end:
+  dat 0
+
+shellproc_line_vram_start:
+  dat 0  
+shellproc_line_vram_curr:
+  dat 0
+
+
+; ---- entrypoint
+shellproc_entry:
+	set i, [shellproc_line_vram_start]  ; VRAM start
+  set j, i
+  add j, SCREEN_COLUMNS               ; next row down
+  set x, i
+  add x, (SCREEN_COLUMNS * (SHELL_ROWS-1))  ; end of scroll area
+
+1:
+  sti [i], [j]  ; copy to row above
+  ifn i, x      ; end of area?
+    b 1b        ; no, go around
+  
+  set [shellproc_line_vram_curr], i   ; line entry will be here
+  set i, x                            ; need to clear the line
+  add x, SHELL_ROWS
+1:
+  sti [i], 0
+  ifn i, x
+    b 1b
+  
+  set [shellproc_line_cursor], shellproc_line_buffer_memory
+  set [shellproc_line_end], shellproc_line_buffer_memory+1
+  set [shellproc_line_buffer_memory], 0
+
+shellproc_readline_loop:
+	set B, 1              ; use blocking form
+	jsr ReadChar          ; fetch next char
+  
+  ifl C, 0x1e                 ; editing char?
+    set pc, shellproc_handle_edit   ; handle that
+  ifg C, 0x7f                 ; arrow or control?
+	  set pc, shellproc_handle_arrow  ; handle that
+
+  ; insert regular character
+  set i, [shellproc_line_end]               ; current end of line
+  ife i, shellproc_line_buffer_memory_end   ; out of memory?
+    b shellproc_readline_loop               ; drop the keypress
+
+  set x, [shellproc_line_cursor]            ; current cursor pos
+  set j, i                                  ; line end
+  add i, 1                                  ; we're adding a character
+1:
+  std [i], [j]                              ; shuffle characters up
+  ifn j, x                                  ; at cursor position?
+    b 1b                                    ; no, keep shuffling
+
+  set [x], c                                ; new character goes here  
+  add [shellproc_line_cursor], 1            ; cursor moves on one character
+  add [shellproc_line_end], 1               ; as does end of line
+
+shellproc_update_screen:
+  jsr TaskSwitch
+
+  set i, [shellproc_line_vram_curr]
+  set x, i
+  add x, SCREEN_COLUMNS
+1:
+  sti [i], 0
+  ifn i, x
+    b 1b
+  set i, shellproc_line_buffer_memory       ; update display: from buffer memory
+  set j, [shellproc_line_vram_curr]         ; to VRAM
+  set c, SHELL_COLOUR                       ; using the shell colour
+  jsr strcpy                                ; and copy
+  
+  set a, [shellproc_line_vram_curr]
+  add a, [shellproc_line_cursor]
+  sub a, shellproc_line_buffer_memory
+  bor [a], 0x0200
+  
+  set pc, shellproc_readline_loop           ; next character
+  
+  
+  
+shellproc_handle_edit:
+  ifl c, 0x10
+    set pc, shellproc_readline_loop
+  ifg c, 0x13
+    set pc, shellproc_readline_loop
+  set pc, [c + shellproc_edit_handlers - 0x10];
+shellproc_edit_handlers:
+    dat shellproc_handle_backspace
+    dat shellproc_handle_return
+    dat shellproc_handle_insert
+    dat shellproc_handle_delete
+
+shellproc_handle_backspace:
+    set x, [shellproc_line_end]
+    ife x, (shellproc_line_buffer_memory+1)
+        set pc, shellproc_readline_loop
+    set i, [shellproc_line_cursor]
+    set j, i
+    add j, 1
+1:
+    sti [i], [j]
+    ifn i, x
+        b 1b
+    set [i], 0
+    sub [shellproc_line_cursor], 1
+    sub [shellproc_line_end], 1
+    set pc, shellproc_update_screen
+    
+shellproc_handle_return:
+    set pc, shellproc_entry ; todo
+        
+shellproc_handle_insert:    
+    set pc, shellproc_readline_loop ; todo
+    
+shellproc_handle_delete:    
+    set pc, shellproc_readline_loop ; todo
+  
+shellproc_handle_arrow:
+  set pc, shellproc_readline_loop ; todo
+  	
+	
+	RESERVE_WORDS( 0x20 )	; stack space
+shellproc_sp:
+	dat shellproc_entry
+  		
+shellproc_table:
+	dat shellproc_table		; next
+	dat shellproc_table		; prev
+	dat shellproc_start		; block start
+	dat shellproc_sp		  ; sp
+.org shellproc_table + kerntable_size

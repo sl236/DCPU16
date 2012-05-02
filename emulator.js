@@ -482,6 +482,7 @@
     // -----------------------
     Emulator.Reset = function()
     {
+        Emulator.paused = true;
         Emulator.regs = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0xFFFF, 0];
         Emulator.mem = new Array(0x10000);
         Emulator.cycles = 0;
@@ -617,5 +618,27 @@
         Emulator.walltime += time;
         Emulator.timedcycles += Emulator.cycles - startcyc;
     }
-
+    
+    // -----------------------
+    Emulator.B64Codec = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    Emulator.LoadB64Image = function( _b64 )
+    {
+        Emulator.Reset();
+        var Codec = Emulator.B64Codec;
+        var buffer = 0;
+        var bits = 0;
+        var pos = 0;
+        
+        for( var i = 0; i < 65536; i++ )
+        {
+            while( bits < 16 )
+            {
+                buffer = (buffer << 6) | Codec.indexOf(_b64[pos++]);
+                bits += 6;
+            }
+            Emulator.mem[i] = (buffer >>> (bits - 16)) & 0xFFFF;
+            bits -= 16;
+        }
+    }
+    
 })();                                         // (function(){

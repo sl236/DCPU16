@@ -1,0 +1,23 @@
+; ----- dll_delete
+; remove item at X from doubly linked list (and make it form its own valid dll with only itself on it)
+; trashes A, B
+dll_delete:
+  set a, [x]                   ; next
+  set b, [x+kerntable_prev]    ; prev
+  set [a+kerntable_prev], b    ; prev now next's prev
+  set [b], a				   ; next now prev's next
+  set [x], x				   ; fix up curr node's next
+  set [x+kerntable_prev], x    ; and prev
+  set pc, pop				   ; done
+
+; ----- dll_splice
+; splice dll X between Y and Y's prev (new list will go ... Y's prev, X ... X's prev, Y )   Y'<->X<-...->X'<->Y
+; trashes b, returns Y's prev in a
+dll_splice:
+  set a, [y+kerntable_prev]		; Y's prev
+  set [a], x					; Y's prev's next now X
+  set b, [x+kerntable_prev]		; X's prev
+  set [x+kerntable_prev], a		; X's prev now Y's prev
+  set [b], y					; X's prev's next now Y     
+  set [y+kerntable_prev], b		; Y's prev now X's prev  
+  set pc, pop					; done  

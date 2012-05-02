@@ -1,0 +1,52 @@
+; ----- Exit
+; ----- Exits current process, releasing its memory and removing it from the task list
+exit_impl:
+  iaq 1				  ; critical section
+  set x, [proclist]		; [proclist] is current process (to be deleted)
+  set z, [x]			; next process
+  set [proclist], z		; will be current when we're done
+  jsr dll_delete		; remove from the process list
+  iaq 0				  ; end critical section
+  
+  jsr free			  ; release process memory
+	
+	; done! taskswitch to next process
+  set a,    [proclist]					; next process table
+  set sp,   [a + kerntable_saved_sp]	; fetch its sp
+  set pc,   pop						; return there
+
+; ----- Fork
+; ----- Allocate X words of memory for a new process.
+; ----- New process will have at least X words available between start of its process space and SP, but may have more.
+; ----- Old process's stack will be copied to new process space.
+; ----- Execution will resume in old process space for both processes, however the new process' SP will point to the new stack
+
+def align 16
+fork_impl:
+  set A, [proclist]       ; current process' table
+  sub A, SP               ; area required for current stack
+  add A, 8				  ; ensure space for ISRs and kernel calls
+  add A, (align-1)        ; align to a sensible size: pad
+  and A, ~(align-1)       ; and mask
+  ifg A, X                ; if the result is more than caller asked for
+    set X, A              ; use that instead so we don't crash
+
+  jsr malloc			  ; allocate process memory
+  
+  ; now we need to copy the stack over  
+  set I, [proclist]   ; stack starts at the process table
+  set J, X            ; new stack starts at the new process table
+  
+1:
+  std [J], [I]		  ; copy and decrement
+  ifn I, SP           ; if we've not copied the whole stack
+    b 1b              ; go around
+  set [J], [I]		  ; copy last word
+
+  set [X+kerntable_saved_sp], J ; store new process SP
+  
+  set Y, [proclist]   ; current process table address
+  iaq 1				  ; critical section
+  jsr dll_splice		; add the new process to the process list
+  iaq 0				  ; end critical section
+  set pc, pop         ; we're done

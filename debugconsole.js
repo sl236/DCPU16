@@ -86,6 +86,19 @@
       help: 'pause\nPauses a trace or emulation run.',
       fn: function() { Emulator.paused = true; }
   },
+  
+  image:
+  {
+     help: 'image path\file.b64\nResets emulator and reads a base 64 encoded memory image.',
+     fn: function(_args) 
+     { 
+         Console.ReadFile
+                (
+                    _args.join(' '),
+                    function(data) { Emulator.LoadB64Image(data); }
+                );
+     }
+  },
 
     asm:
   {
@@ -102,10 +115,6 @@
               {
                   if (!Assembler.Assemble(_text))
                   {
-                      if (Assembler.BlockAccumulator.blocks.length)
-                      {
-                          Assembler.Patch();                      
-                      }
                       return 0;
                   }
                   return 1;

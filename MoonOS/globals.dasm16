@@ -1,0 +1,17 @@
+; ------------------
+; kernel internal data structures
+; ------------------
+freelist:		dat freemem_first		; freelist next pointer
+				dat freemem_last		; freelist prev pointer
+				dat freelist			; freelist head block start
+
+screen_device_id:		dat 0xffff
+screen_vram:			dat 0
+screen_charmap:			dat 0
+screen_palette:			dat 0
+screen_block_handle:	dat 0
+
+keyboard_device_id:	dat 0xffff
+
+clock_device_id:	dat 0xffff
+clock_time:			dat 0, 0

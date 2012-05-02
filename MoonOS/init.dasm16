@@ -1,0 +1,131 @@
+; ------------------
+; boot process
+; ------------------
+init:  
+  set [1], exit_impl			; the jump at location 0 needs to go to the Exit implementation
+  set sp, initproc_table	; at boot, the stack pointer was not set up for us
+  ias isr_entry					  ; can now handle interrupts
+  
+	; -- Device enumeration
+  set i, 0						; running device count
+  hwn j							; total number of devices
+   
+init_hw:
+	ife i, j					; enumerated everything?
+		set pc, init_hw_end		; bail
+	
+	hwq i						; fetch device params into a+b, c, x+y
+	
+	; LEM1802 Low Energy Monitor - http://dcpu.com/highnerd/rc_1/lem1802.txt
+	ife b, 0x7349
+	ife a, 0xf615
+		set pc, init_hw_lem1802
+
+	; Generic Keyboard (compatible) - http://dcpu.com/highnerd/rc_1/keyboard.txt
+	ife b, 0x30cf
+	ife a, 0x7406
+		set pc, init_hw_generic_keyboard
+
+	; Generic Clock (compatible) - http://dcpu.com/highnerd/rc_1/clock.txt
+	ife b, 0x12d0
+	ife a, 0xb402
+		set pc, init_hw_generic_clock
+
+init_hw_next:
+	add i, 1							; next device ID
+	set pc, init_hw						; go around
+
+init_hw_lem1802:
+	ifn [screen_device_id], 0xffff		; already got one?
+		set pc, init_hw_next			; can only deal with one right now
+	set [screen_device_id], i			; store the device ID
+	
+	set X, 0x180 + 0x100 + 0x10			; vram, charmap, palette
+	jsr malloc							; allocate memory for these
+	set [screen_block_handle], X		; store the block handle
+	set b, [X+kerntable_block_start]	; start of allocated area
+	set [screen_vram], b				; that's the VRAM
+	set a, 0							; MEM_MAP_SCREEN
+	hwi i								; map it
+	add b, 0x180						; after the VRAM, the charmap
+	set [screen_charmap], b				; store it
+	set a, 4							; MEM_DUMP_FONT
+	hwi i								; populate it with defaults
+	set a, 1							; MEM_MAP_FONT
+	hwi i								; map it
+	add b, 0x100						; after the charmap, the palette ram
+	set [screen_palette], b				; store it
+	set a, 5							; MEM_DUMP_PALETTE
+	hwi i								; populate it with defaults	
+	set a, 2							; MEM_MAP_PALETTE
+	hwi i								; map it
+	set pc, init_hw_next				; done
+
+init_hw_generic_keyboard:
+	ifn [keyboard_device_id], 0xffff	; already got one?
+		set pc, init_hw_next			; can only deal with one right now
+	set [keyboard_device_id], i			; store the device ID
+	set a, 3							; enable keyboard interrupts
+	set b, isr_handle_keyboard			; handler address as the message
+	hwi i								; send that
+	set pc, init_hw_next				; done
+
+init_hw_generic_clock:
+	ifn [clock_device_id], 0xffff	; already got one?
+		set pc, init_hw_next		; can only deal with one right now
+	set [clock_device_id], i		; store the device ID	
+	set a, 0						; set timebase
+	set b, 60						; tick at 1Hz
+	hwi i							; send that
+	set a, 2						; enable clock interrupts
+	set b, isr_handle_clock			; handler address as the message
+	hwi i							; send that	
+	set pc, init_hw_next			; done
+		
+init_hw_end:
+	; -- done initialising devices
+  ife [screen_vram], 0  ; do we have a memory-mapped screen?
+    sub pc, 1           ; if not, we don't know how to continue.
+    
+  ; populate screen with init_message
+  set i, init_message     ; message data
+  set j, [screen_vram]    ; start of VRAM
+  set [shellproc_line_vram_start], j  ; tell the shell where it is
+  add j, SCREEN_COLUMNS   ; shell will scroll console up on entry, so no point writing anything to top line
+1:
+  set c, [i]              ; fetch colour
+  ife c, 0                ; if it's zero
+    b 1f                  ;   we're done
+  add i, 1                ; skip over colour
+  jsr strcpy              ; copy text
+  add i, 1                ; skip over null terminator
+  b 1b                    ; go around
+1:
+
+
+  ; can now hand over to shell
+  iaq 1                   ; critical section
+  set x, shellproc_table  ; shell process table
+  set y, [proclist]       ; current process
+  jsr dll_splice          ; splice shell process in just before us
+  iaq 0                   ; end of critical section
+
+  set pc, Exit            ; release init process memory to system
+
+init_message:
+;              0123456789ABCDEF0123456789ABCDEF
+  dat 0x2000, "MoonOS 0.1                      ", 0
+  dat 0x2000, "Luna City 1985                  ", 0
+  dat 0x2000, "                                ", 0
+  dat 0x2000, "                                ", 0  
+  dat 0x2000, "                                ", 0
+  dat 0
+
+	RESERVE_WORDS( 0x20 )	; stack
+  
+initproc_table:
+  dat idleproc_table    ; next
+  dat idleproc_table    ; prev
+  dat init_start        ; block start
+  dat initproc_table    ; no stack
+.org initproc_table + kerntable_size

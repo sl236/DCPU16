@@ -10,17 +10,18 @@
 var Wrapper =
 {
   Arguments: arguments,
-  timeout: null
+  timeout: null,
+  options: { }
 };
 
 var window =
 {
-
+    isRhino: true
 };
 
-function setTimeout( _expr, _time )
+function setTimeout( _fn, _time )
 {
-    (function(_expr) { Wrapper.timeout = function() { return eval(_expr); } })(_expr);
+    (function(_expr, _old) { Wrapper.timeout = function() { return (_old ? _old() : false) || eval(_expr); } })(_fn, Wrapper.timeout);
 }
 
 load('globals.js');
@@ -39,7 +40,7 @@ load('assembler.js');
 
     Console.Log = function(_text)
     {
-        print(_text);
+        java.lang.System.err.println(_text);
     }
 
     Console.ReadFile = function(_file, _callback)
@@ -86,6 +87,39 @@ load('assembler.js');
         Console.Log(result);
     }
 
+    Emulator.B64Codec = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    Emulator.GetB64MemoryDump = function()
+    {
+        var Codec=Emulator.B64Codec;
+        var buffer=0;
+        var bits=0;
+        var pos=0;
+        var result=[];
+
+        for(var i=0;i<65536;i++)
+        {
+            buffer=(buffer<<16)|Emulator.mem[i];
+            bits+=16;
+            while(bits>=6)
+            {
+                result.push(Codec[(buffer>>>(bits-6))&0x3F]);
+                bits-=6;
+            }
+        }
+        while(bits>0)
+        {
+            result.push(Codec[(buffer>>>(bits-6))&0x3F]);
+            bits-=6;
+        }
+
+        while((result.length%3)!=0)
+        {
+            result.push('=');
+        }
+
+        return result.join('');
+    }
+    
     Console.H8 = function(_i)
     {
         var h = _i.toString(16);
@@ -135,7 +169,27 @@ load('assembler.js');
 
     if (Wrapper.Arguments.length)
     {
-        var file = Wrapper.Arguments[0];
+        var file = null;
+        for( var i = 0; i < Wrapper.Arguments.length; i++ )
+        {
+            var x = Wrapper.Arguments[i];
+            if( x[0] == '-' )
+            {
+                if( x.length >= 2 )
+                {
+                    Wrapper.options[x[1]]=(x.length>2)? x.substring(2) : true;
+                }
+            }
+            else
+            {
+                file = x;
+            }
+        }
+        if( !file )
+        {
+            Console.Log("No input file specified!");
+            return;
+        }
         Wrapper.Path = './';
         var m = file.match(/^(.+[\\\/])([^\\\/]+)$/);
         if (m && m[1] && m[2])
@@ -144,7 +198,7 @@ load('assembler.js');
             file = m[2];
         }
 
-        print("Assembling " + Wrapper.Path + file);
+        Console.Log("Assembling " + Wrapper.Path + file);
         var source = readFile(Wrapper.Path + file);
         var haveErrors = Assembler.Assemble(source);
 
@@ -157,10 +211,28 @@ load('assembler.js');
 
         if (!haveErrors)
         {
-            Assembler.Patch();
-            if (runCommand("test", "-f", "dcpu.jar") == 0)
+            if( Wrapper.options['O'] )
             {
-                print("\ndcpu.jar found in current directory, trying to call computer.DCPU.testCPU");
+                if( Wrapper.options['O'] == 'b64' )
+                {
+                    print( Emulator.GetB64MemoryDump() );
+                }
+                else if( Wrapper.options['O'] == 'dat' )
+                {
+                    for (var i = 0; i < 0x10000; i+=0x8)
+                    {
+                        var s = '';
+                        for( var j = 0; j < 0x8; j++ )
+                        {
+                            s += ', 0x' + Console.H16(Emulator.mem[i+j]);
+                        }
+                        print( 'DAT ' + s.substring(1) );
+                    }
+                }
+            }
+            else if (runCommand("test", "-f", "dcpu.jar") == 0)
+            {
+                Console.Log("\ndcpu.jar found in current directory, trying to call computer.DCPU.testCPU");
                 var str = new java.lang.StringBuilder();
                 for (var i = 0; i < 0x10000; i++)
                 {
@@ -173,7 +245,7 @@ load('assembler.js');
     }
     else
     {
-        print("Usage: ./assemble file.dasm16");
+        Console.Log("Usage: ./assemble [options] file.dasm16\nAvailable options:\n-Otype controls the output type. type may be b64, dat\n");
     }
 
 })();

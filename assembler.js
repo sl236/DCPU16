@@ -10,6 +10,17 @@
     // ---------
     // Assembler
     // ---------
+    
+    function BeginInclude(_name)
+    {
+        Assembler.CurrFile.push([_name + ' line ', Assembler.CurrLineNumber]);
+    }
+    
+    function EndInclude(_name)
+    {        
+        var f = Assembler.CurrFile.pop();
+        Assembler.CurrFile[Assembler.CurrFile.length - 1][1] += (Assembler.CurrLineNumber - f[1]);
+    }
 
     function BeginNewBlock(_origin)
     {
@@ -123,11 +134,13 @@
 
     Assembler.Grammar =
     {
-        START: ["labelledline | justlabels | line | emptyline"],
+        START: ["labelledline | justlabels | line | begininclude | endinclude | emptyline"],
         emptyline: ["/\\s*/ $"],
         labelledline: ["justlabels line", function(_m) { return _m[1]; } ],
         justlabels: ["/\\s*/ labels /\\s*/"],
         line: ["/\\s*/ statement /\\s*/ $", function(_m) { return _m[1]; } ],
+        begininclude: ["'.begininclude' /.+/ $", function(_m) { BeginInclude(_m[1]); return 0; } ],
+        endinclude: ["'.endinclude' /.+/ $", function(_m) { EndInclude(_m[1]); return 0; } ],
         statement: ["basicop | extendedop | directive"],
 
         basicop: ["basicopname /(,\\s*)?/ boperand /\\s*,?\\s*/ aoperand", function(_m)
@@ -154,7 +167,7 @@
             })(_m[0], _m[1]);
         }
         ],
-        directive: ["dat | origin | ret | brk | shell | def | autobranch"],
+        directive: ["dat | origin | ret | brk | shell | def | autobranch | setfile"],
 
         basicopname: ["/\\b(set|add|sub|mul|mli|div|dvi|mod|mdi|and|bor|xor|shr|asr|shl|if[bcengalu]|adx|sux|sti|std)\\b/ /\\s*/",
             function(_m) { return _m[0]; } ],
@@ -530,23 +543,24 @@
     Assembler.IncludeRegexp = new RegExp('^\\s*[.]?include\\s*["]([^"]+)["]', 'im');
     Assembler.Assemble = function(_text)
     {
-        Assembler.BlockAccumulator.blocks = [];
-
         // process includes
         Assembler.Program = _text;
         var m = Assembler.IncludeRegexp.exec(_text);
         if (m && m[1])
         {
-            Console.ReadFile(m[1], function(_data)
-            {
-                Assembler.Program = Assembler.Program.replace(Assembler.IncludeRegexp, _data + "\n");
-                setTimeout("Assembler.Assemble(Assembler.Program)", 0)
-            }
+            Console.ReadFile(m[1], (function(_filename){ return function(_data)
+                {
+                    var data = '.begininclude ' + _filename + '\n' + _data + '\n.endinclude ' + _filename;
+                    Assembler.Program = Assembler.Program.replace(Assembler.IncludeRegexp, data);
+                    setTimeout("Assembler.Assemble(Assembler.Program)", 0)
+                } })(m[1])
             );
             return false;
         }
 
         // can actually start assembling now
+        Assembler.CurrFile = [ ["", 0] ];
+        Assembler.BlockAccumulator.blocks = [];
         BeginNewBlock(0);
         Assembler.LabelResolver.pc = 0;
         Assembler.ErrorState = 0;
@@ -561,13 +575,18 @@
         Assembler.MemMap = [];
 
         // so, I decided to use regular expressions to solve the problem of macro parsing...
-        macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
+        var macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
+        if( window.isRhino )
+        {
+            // argh, looks like some kind of bug in Rhino
+            macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?((?:(?:[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
+        }
 
         // preprocessing
         var cmacro = [];
         for (var i = 0; i < lines.length; i++)
         {
-            var line = lines[i].replace(/[\r\n]+/g, '').replace(/;.*$/g, ''); // strip comments, strip newline at end            
+            var line = lines[i].replace(/[\r\n]+/g, '').replace(/;.*$/g, ''); // strip comments, strip newline at end
 
             // we need to escape names so they can be differentiated from labels, but not in quoted strings
             // split the line into quoted and nonquoted sections
@@ -662,7 +681,8 @@
         var result = [];
         for (var i = 0; i < lines.length; i++)
         {
-            Assembler.CurrLine = (function(_i) { return function() { return _i + 1; }; })(i);
+            var file = Assembler.CurrFile[Assembler.CurrFile.length-1];
+            Assembler.CurrLine = (function(_i, _file) { return function() { return _file[0] + (_i + 1 - _file[1]); }; })(i, file);
             Assembler.CurrLineNumber = i + 1;
             var toparse = [lines[i]];
             var macro = macrore.exec(toparse[0]);
@@ -715,8 +735,8 @@
                 Assembler.CurrLine = (function(_str) { return function() { return _str; } })
                 (
                     macro ?
-                        ((i + 1) + ' (macro "' + macro[0] + '" expansion, line ' + (Assembler.MacroStarts[macro[0]] + j) + ')')
-                       : (i + 1)
+                        (Assembler.CurrLine() + ' (macro "' + macro[0] + '" expansion, line ' + j + ')')
+                       : Assembler.CurrLine()
 
                 );
 
@@ -770,6 +790,7 @@
         if (!Assembler.ErrorState)
         {
             Assembler.Status();
+            Assembler.Patch();
         }
 
         Assembler.CurrLineNumber = undefined;

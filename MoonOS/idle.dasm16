@@ -1,0 +1,39 @@
+; ------------------
+; idle process
+; ------------------
+idleproc_entry:
+	ife [screen_vram], 0
+		b 1f
+	
+	set A, [clock_time+1]
+	set B, idleproc_statusline
+	set C, 0
+	jsr format_hex
+	set A, [clock_time]
+	add B, 5
+	jsr format_hex
+	set I, idleproc_statusline
+	set J, [screen_vram]
+	add J, 32*11
+	set C, 0x2000
+	jsr strcpy
+	
+1:
+	set push, idleproc_entry	; reschedule our entrypoint
+	set pc, TaskSwitch			; and go taskswitch	
+	
+idleproc_statusline:
+	;	 0123456789ABCDEF0123456789ABCDEF
+	dat	"0123:4567 ----------------------", 0
+		
+	RESERVE_WORDS( 0x20 )	; stack space
+	
+idleproc_sp:
+	dat idleproc_entry
+  
+idleproc_table:
+	dat initproc_table		; next
+	dat initproc_table		; prev
+	dat idleproc_entry		; block start
+	dat idleproc_sp			  ; sp
+.org idleproc_table + kerntable_size

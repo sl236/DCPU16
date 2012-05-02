@@ -1,0 +1,36 @@
+; ------------------
+; interrupt handlers
+; ------------------
+
+def isr_header_magic 0x3457
+isr_entry:
+	bor a, 0
+	ifn [a-1], isr_header_magic		; sanity check: does the message hold the address of an ISR?
+	    rfi 0						; nope. Ignore it
+	set pc, a						; branch to handler
+
+dat isr_header_magic	; ---- keyboard handler	
+isr_handle_keyboard:
+	ife [keyboard_wait_proc], 0	; process waiting on keyboard?
+		rfi 0					; nope. Bail.
+	set push, x					; can't trash registers of whatever we interrupted, store them
+	set push, y					
+	set push, b
+	set x, [keyboard_wait_proc]	; fetch waiting process
+	set [keyboard_wait_proc], 0 ; it's not waiting any more
+	set y, [proclist]			; active process
+	jsr dll_splice				; add the process that was waiting just before it
+	set b, pop					; restore registers
+	set y, pop
+	set x, pop
+	rfi 0						; exit ISR
+keyboard_wait_proc:
+	dat 0
+
+dat isr_header_magic	; ---- clock tick handler	
+isr_handle_clock:
+	set push, ex
+	add [clock_time], 1
+	add [clock_time+1], ex
+	set ex, pop
+	rfi 0

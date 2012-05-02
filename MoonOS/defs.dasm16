@@ -1,0 +1,10 @@
+macro RESERVE_WORDS(_x)
+  999: .org (999b+_x)
+endm
+
+; ----- kernel table format
+def kerntable_next    		0
+def kerntable_prev      	1
+def kerntable_block_start	2
+def kerntable_saved_sp     	3
+def kerntable_size			(kerntable_saved_sp+1)

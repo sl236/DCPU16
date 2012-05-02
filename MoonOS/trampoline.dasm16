@@ -1,0 +1,27 @@
+; ------------------------------
+; Fixed memory area 0x00 .. 0x1f
+; ------------------------------
+; ----- Public API entrypoints
+.org 0
+  set pc, init					  ; 0x00 exit_impl		
+  set pc, fork_impl				; 0x02
+  set pc, readch_impl			; 0x04
+
+; reserved area
+
+.org 0x1e
+	proclist: dat initproc_table	    ; current process table address
+
+; ----- TaskSwitch (0x1f)
+; ----- Assumes return address on stack. Preserves sp, nothing else
+.org TaskSwitch
+taskswitch_impl:
+	set b,	 proclist					; current process table address held here
+	set a,   [b]						; fetch it
+	iaq 1								; critical section
+	set [a+kerntable_saved_sp], sp			; store sp there
+	set a,   [a]							; get next process table
+	set [b], a								; store it
+	set sp,  [a+kerntable_saved_sp]			; fetch sp
+	iaq 0								; end critical section
+	set pc,  pop		                ; resume process
