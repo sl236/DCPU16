@@ -186,10 +186,11 @@ shellproc_handle_return:
 	RESERVE_WORDS( 0x20 )	; stack space
 shellproc_sp:
 	dat shellproc_entry
-  		
+	
 shellproc_table:
 	dat shellproc_table		; next
 	dat shellproc_table		; prev
 	dat shellproc_start		; block start
-	dat shellproc_sp		  ; sp
+	dat shellproc_sp		; sp
+	dat 0					; process message handler
 .org shellproc_table + kerntable_size

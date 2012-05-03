@@ -111,8 +111,6 @@ sub handle
   my @content = ( );
   my $remote_host = '';
   chdir $serverroot;
-  
-  print $request;
 
   {
     my ($port, $iaddr) = sockaddr_in(getpeername($client));

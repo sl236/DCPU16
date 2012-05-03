@@ -5,9 +5,12 @@ idleproc_entry:
 	set push, idleproc_entry		; reschedule our entrypoint
 	
 	set a, [ctrl_keypress]			; check for ctrl+key combo
-	ifn a, 0						; got one?
+	ife a, 0						; got one?
 		set pc, 1f					; nope; skip to next section
-	set [ctrl_keypress], 0			; picked it up	
+	set [ctrl_keypress], 0			; picked it up
+	
+	set x, ich_table				; first handler block
+	jsr ich_find_handler			; go find something to handle the keypress
 	
 1:
 	ife [screen_vram], 0			; if we don't have a screen
@@ -22,22 +25,44 @@ idleproc_entry:
 	set [cursor_data+2], B			; update blink time
 	
 	; update status line
-	set A, [clock_time+1]
-	set B, idleproc_statusline
-	set C, 0
-	jsr format_hex
-	set A, [clock_time]
-	add B, 5
-	jsr format_hex
-	set I, idleproc_statusline
-	set J, [screen_vram]
-	add J, 32*STATUS_ROW
-	set C, 0x2000
-	ifn [ctrl_held], 0
-		xor C, 0x2B00
-	jsr strcpy
+	set A, [clock_time+1]			; top word of clock
+	set B, idleproc_statusline		; start of status line
+	set C, 0						; no colour yet, we add that later
+	jsr format_hex					; 
+	set A, [clock_time]				; bottom word of clock
+	add B, 5						; skip the colon
+	jsr format_hex					;
+	set I, idleproc_statusline		; from start of statuls
+	set J, [screen_vram]			; to start of vram
+	add J, 32*STATUS_ROW			; plus the status row offset
+	set C, 0x2000					; orring in a colour
+	ifn [ctrl_held], 0				; which is different if CTRL is being held
+		xor C, 0x2B00				;
+	jsr strcpy						; copy
 	
-	set pc, TaskSwitch			; done
+	set pc, TaskSwitch				; done
+		
+ich_find_handler:	; -- loop through control key combo handler blocks, branch to first matching handler or just return if none match
+	ife x, 0				; hit the end?
+		set pc, pop			; no handler found	
+	ifl a, [x]				; smaller than first character?
+		b 1f				; can't handle it
+	ifg a, [x+1]			; larger than last character?
+		b 1f				; can't handle that either
+	sub a, [x]				; index into branch table
+	add a, x				; handler block start
+	set pc, [a+3]			; branch table is three words in		
+1:	
+	set x, [x+2]			; next block
+	b ich_find_handler		; loop round
+	
+	; first, last, next, branch table
+ich_table:
+	dat 'c', 'c', 0, ich_handle_ctrl_c
+	
+ich_handle_ctrl_c:  ; -- handle CTRL+C
+	; todo
+	set pc, pop
 	
 idleproc_statusline:
 	;	 0123456789ABCDEF0123456789ABCDEF
@@ -52,5 +77,6 @@ idleproc_table:
 	dat initproc_table		; next
 	dat initproc_table		; prev
 	dat idleproc_entry		; block start
-	dat idleproc_sp			  ; sp
+	dat idleproc_sp			; sp
+	dat 0					; message handler
 .org idleproc_table + kerntable_size
