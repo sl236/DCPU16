@@ -402,6 +402,11 @@
         regindoffsetleft: ["/\\[\\s*/ expression /\\s*/ /[+-]/ /\\s*/ /;[abcxyzij]/ /\\s*\\]/",
           function(_m)
           {
+          	  if ((_m[1][1] == 0) && (eval(_m[1][0]) == 0) )
+          	  {
+          	  	return (function(id) { return function() { return id + 0x8; } })('abcxyzij'.indexOf(_m[5].charAt(1).toLowerCase()));
+          	  }
+          	  	
               var expr = _m[3] + '(' + _m[1][0] + ')';
               var id = 'abcxyzij'.indexOf(_m[5].charAt(1).toLowerCase());
               CountAssembledWords(1);
@@ -418,6 +423,11 @@
         regindoffsetright: ["/\\[\\s*/ /;[abcxyzijABCXYZIJ]/ /\\s*/ /[+-]/ /\\s*/ expression /\\s*\\]/",
           function(_m)
           {
+          	  if ((_m[5][1] == 0) && (eval(_m[5][0]) == 0) )
+          	  {
+          	  	return (function(id) { return function() { return id + 0x8; } })('abcxyzij'.indexOf(_m[1].charAt(1).toLowerCase()));
+          	  }
+          	  
               var expr = _m[3] + '(' + _m[5][0] + ')';
               var id = 'abcxyzij'.indexOf(_m[1].charAt(1).toLowerCase());
               CountAssembledWords(1);

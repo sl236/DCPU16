@@ -1,6 +1,14 @@
 ; ------------------
 ; boot process
 ; ------------------
+initproc_header:
+	dat 0						; terminal handle
+	dat 0						; message handler
+	dat shellproc_identifier	; we'll be handing over to the shell when we're done, so use its identifier
+	dat 0						; entrypoint
+
+.org initproc_header + kernheader_size
+
 init:  
   set [1], exit_impl			; the jump at location 0 needs to go to the Exit implementation
   set sp, initproc_table	; at boot, the stack pointer was not set up for us
@@ -38,27 +46,7 @@ init_hw_next:
 init_hw_lem1802:
 	ifn [screen_device_id], 0xffff		; already got one?
 		set pc, init_hw_next			; can only deal with one right now
-	set [screen_device_id], i			; store the device ID
-	
-	set X, 0x180 + 0x100 + 0x10			; vram, charmap, palette
-	jsr malloc							; allocate memory for these
-	set [screen_block_handle], X		; store the block handle
-	set b, [X+kerntable_block_start]	; start of allocated area
-	set [screen_vram], b				; that's the VRAM
-	set a, 0							; MEM_MAP_SCREEN
-	hwi i								; map it
-	add b, 0x180						; after the VRAM, the charmap
-	set [screen_charmap], b				; store it
-	set a, 4							; MEM_DUMP_FONT
-	hwi i								; populate it with defaults
-	set a, 1							; MEM_MAP_FONT
-	hwi i								; map it
-	add b, 0x100						; after the charmap, the palette ram
-	set [screen_palette], b				; store it
-	set a, 5							; MEM_DUMP_PALETTE
-	hwi i								; populate it with defaults	
-	set a, 2							; MEM_MAP_PALETTE
-	hwi i								; map it
+	set [screen_device_id], i			; store the device ID	
 	set pc, init_hw_next				; done
 
 init_hw_generic_keyboard:
@@ -84,12 +72,17 @@ init_hw_generic_clock:
 		
 init_hw_end:
 	; -- done initialising devices
-  ife [screen_vram], 0  ; do we have a memory-mapped screen?
-    sub pc, 1           ; if not, we don't know how to continue.
+  ife [screen_device_id], 0xffff  	; do we have a screen?
+    sub pc, 1           			; if not, we don't know how to continue.
+    
+  ; allocate a terminal; no special requirements
+  set a, 0
+  jsr term_alloc
     
   ; populate screen with init_message
-  set i, init_message     ; message data
-  set j, [screen_vram]    ; start of VRAM
+  set i, init_message     			; message data
+  set j, [screen_curr_terminal]   	; terminal descriptor
+  set j, [j+term_vram]				; VRAM start
   set [shellproc_line_vram_start], j  ; tell the shell where it is
   add j, SCREEN_COLUMNS   ; shell will scroll console up on entry, so no point writing anything to top line
 1:
@@ -101,9 +94,12 @@ init_hw_end:
   add i, 1                ; skip over null terminator
   b 1b                    ; go around
 1:
+  
+  ; hand ownership of our terminal over to the shell
+  set [shellproc_header+kernheader_terminal_handle], [initproc_header+kernheader_terminal_handle]
+  set [initproc_header+kernheader_terminal_handle], 0
 
-
-  ; can now hand over to shell
+  ; insert shell into process list
   iaq 1                   ; critical section
   set x, shellproc_table  ; shell process table
   set y, [proclist]       ; current process
@@ -116,12 +112,9 @@ init_message:
 ;              0123456789ABCDEF0123456789ABCDEF
   dat 0x2000, "MoonOS 0.1                      ", 0
   dat 0x2000, "Luna City 1985                  ", 0
-  dat 0x2000, "                                ", 0
-  dat 0x2000, "                                ", 0  
-  dat 0x2000, "                                ", 0
   dat 0
 
-	RESERVE_WORDS( 0x20 )	; stack
+  	RESERVE_WORDS( 0x20 )	; stack
   
 initproc_table:
   dat idleproc_table    ; next

@@ -1,6 +1,7 @@
 ; ----- Exit
 ; ----- Exits current process, releasing its memory and removing it from the task list
 exit_impl:
+  jsr term_release	  ; if we owned a terminal, free it
   iaq 1				  ; critical section
   set x, [proclist]		; [proclist] is current process (to be deleted)
   set z, [x]			; next process

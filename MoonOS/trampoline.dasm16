@@ -25,3 +25,15 @@ taskswitch_impl:
 	set sp,  [a+kerntable_saved_sp]			; fetch sp
 	iaq 0								; end critical section
 	set pc,  pop		                ; resume process
+
+; ----- taskswitch to a specific process (internal). Target process in X. Preserves sp, nothing else.
+taskswitch_to_process:
+	set b,	 proclist					; current process table address held here
+	set a,   [b]						; fetch it
+	iaq 1								; critical section
+	set [a+kerntable_saved_sp], sp			; store sp there
+	set [b], x								; store target proctable
+	set sp,  [x+kerntable_saved_sp]			; fetch sp
+	iaq 0								; end critical section
+	set pc,  pop		                ; resume process
+

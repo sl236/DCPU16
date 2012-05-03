@@ -1,6 +1,14 @@
 ; ------------------
 ; idle process
 ; ------------------
+idleproc_header:
+	dat 0						; terminal handle
+	dat 0						; message handler
+	dat 0						; identifier
+	dat 0						; entrypoint
+
+	.org idleproc_header + kernheader_size
+	
 idleproc_entry:
 	set push, idleproc_entry		; reschedule our entrypoint
 	
@@ -13,7 +21,7 @@ idleproc_entry:
 	jsr ich_find_handler			; go find something to handle the keypress
 	
 1:
-	ife [screen_vram], 0			; if we don't have a screen
+	ife [screen_curr_terminal], 0	; if we don't have a screen
 		set pc, TaskSwitch			; nothing more to do here
 	
 	set A, [clock_time]				; blink cursor: get the time
@@ -32,8 +40,9 @@ idleproc_entry:
 	set A, [clock_time]				; bottom word of clock
 	add B, 5						; skip the colon
 	jsr format_hex					;
-	set I, idleproc_statusline		; from start of statuls
-	set J, [screen_vram]			; to start of vram
+	set I, idleproc_statusline		; from start of status
+    set j, [screen_curr_terminal]
+   	set j, [j+kernheader_terminal_handle]	; to start of vram
 	add J, 32*STATUS_ROW			; plus the status row offset
 	set C, 0x2000					; orring in a colour
 	ifn [ctrl_held], 0				; which is different if CTRL is being held
@@ -58,11 +67,7 @@ ich_find_handler:	; -- loop through control key combo handler blocks, branch to 
 	
 	; first, last, next, branch table
 ich_table:
-	dat 'c', 'c', 0, ich_handle_ctrl_c
-	
-ich_handle_ctrl_c:  ; -- handle CTRL+C
-	; todo
-	set pc, pop
+	dat 0x82, 0x83, 0, term_rotate_left, term_rotate_right
 	
 idleproc_statusline:
 	;	 0123456789ABCDEF0123456789ABCDEF
@@ -76,7 +81,6 @@ idleproc_sp:
 idleproc_table:
 	dat initproc_table		; next
 	dat initproc_table		; prev
-	dat idleproc_entry		; block start
+	dat idleproc_header		; block start
 	dat idleproc_sp			; sp
-	dat 0					; message handler
 .org idleproc_table + kerntable_size
