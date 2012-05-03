@@ -4,10 +4,10 @@
 idleproc_entry:
 	set push, idleproc_entry		; reschedule our entrypoint
 	
-	set a, [ctrl_key]				; check for ctrl+key combo
+	set a, [ctrl_keypress]			; check for ctrl+key combo
 	ifn a, 0						; got one?
 		set pc, 1f					; nope; skip to next section
-	set [ctrl_key], 0				; picked it up	
+	set [ctrl_keypress], 0			; picked it up	
 	
 1:
 	ife [screen_vram], 0			; if we don't have a screen
