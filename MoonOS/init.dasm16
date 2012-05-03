@@ -75,7 +75,7 @@ init_hw_generic_clock:
 		set pc, init_hw_next		; can only deal with one right now
 	set [clock_device_id], i		; store the device ID	
 	set a, 0						; set timebase
-	set b, 60						; tick at 1Hz
+	set b, CLOCK_TICK_RATE			; 
 	hwi i							; send that
 	set a, 2						; enable clock interrupts
 	set b, isr_handle_clock			; handler address as the message

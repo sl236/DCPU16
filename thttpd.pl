@@ -57,7 +57,7 @@ $serverroot = $serverroot . '/';
 chdir $serverroot;
 
 my $server_name = '127.0.0.1';
-my $server_port = 80;
+my $server_port = 8000;
 
 my $CRLF = "\015\012";
 

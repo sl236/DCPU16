@@ -2,9 +2,20 @@
 ; idle process
 ; ------------------
 idleproc_entry:
-	ife [screen_vram], 0
-		b 1f
+	set push, idleproc_entry	; reschedule our entrypoint
 	
+	ife [screen_vram], 0		; if we don't have a screen
+		set pc, TaskSwitch		; nothing more to do here
+	
+	set A, [clock_time]				; blink cursor: get the time
+	set B, A						; copy it
+	and B, CURSOR_BLINK_TIME_MASK	; mask with blink rate mask
+	set C, [cursor_data]			; grab cursor pointer
+	ifn B, [cursor_data+2]			; if time has changed since last blink
+		xor [C], [cursor_data+1]	; blink the cursor
+	set [cursor_data+2], B			; update blink time
+	
+	; update status line
 	set A, [clock_time+1]
 	set B, idleproc_statusline
 	set C, 0
@@ -18,9 +29,7 @@ idleproc_entry:
 	set C, 0x2000
 	jsr strcpy
 	
-1:
-	set push, idleproc_entry	; reschedule our entrypoint
-	set pc, TaskSwitch			; and go taskswitch	
+	set pc, TaskSwitch			; done
 	
 idleproc_statusline:
 	;	 0123456789ABCDEF0123456789ABCDEF
