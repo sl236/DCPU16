@@ -2,10 +2,16 @@
 ; idle process
 ; ------------------
 idleproc_entry:
-	set push, idleproc_entry	; reschedule our entrypoint
+	set push, idleproc_entry		; reschedule our entrypoint
 	
-	ife [screen_vram], 0		; if we don't have a screen
-		set pc, TaskSwitch		; nothing more to do here
+	set a, [ctrl_key]				; check for ctrl+key combo
+	ifn a, 0						; got one?
+		set pc, 1f					; nope; skip to next section
+	set [ctrl_key], 0				; picked it up	
+	
+1:
+	ife [screen_vram], 0			; if we don't have a screen
+		set pc, TaskSwitch			; nothing more to do here
 	
 	set A, [clock_time]				; blink cursor: get the time
 	set B, A						; copy it
@@ -25,8 +31,10 @@ idleproc_entry:
 	jsr format_hex
 	set I, idleproc_statusline
 	set J, [screen_vram]
-	add J, 32*11
+	add J, 32*STATUS_ROW
 	set C, 0x2000
+	ifn [ctrl_held], 0
+		xor C, 0x2B00
 	jsr strcpy
 	
 	set pc, TaskSwitch			; done

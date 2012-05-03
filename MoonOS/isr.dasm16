@@ -9,23 +9,45 @@ isr_entry:
 	    rfi 0						; nope. Ignore it
 	set pc, a						; branch to handler
 
+
+
 dat isr_header_magic	; ---- keyboard handler	
 isr_handle_keyboard:
+	set push, b					; store b and c for interrupted process
+	set push, c
+	
+	set a, 2					; key held?
+	set b, 0x91					; CTRL
+	hwi [keyboard_device_id]	; ask the keyboard
+	set [ctrl_held], c			; store the response
+	ifn c, 0					; *is* it held?
+		b isr_hk_ctrl			; if so, users don't see our keypresses
+	
 	ife [keyboard_wait_proc], 0	; process waiting on keyboard?
-		rfi 0					; nope. Bail.
+		b isr_hk_fastexit		; nope. Bail.
+		
 	set push, x					; can't trash registers of whatever we interrupted, store them
 	set push, y					
-	set push, b
 	set x, [keyboard_wait_proc]	; fetch waiting process
 	set [keyboard_wait_proc], 0 ; it's not waiting any more
 	set y, [proclist]			; active process
 	jsr dll_splice				; add the process that was waiting just before it
-	set b, pop					; restore registers
-	set y, pop
+	set y, pop					; restore registers
 	set x, pop
+	
+isr_hk_fastexit:	
+	set c, pop
+	set b, pop
 	rfi 0						; exit ISR
-keyboard_wait_proc:
-	dat 0
+
+isr_hk_ctrl:
+	set a, 1					; poll key queue
+	hwi [keyboard_device_id]	; do that
+	ifn c, 0					; got something?
+		set [ctrl_keypress], c	; stash it
+	b isr_hk_fastexit			; done
+
+
 
 dat isr_header_magic	; ---- clock tick handler	
 isr_handle_clock:

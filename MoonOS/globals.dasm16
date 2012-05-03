@@ -11,8 +11,11 @@ screen_charmap:			dat 0
 screen_palette:			dat 0
 screen_block_handle:	dat 0
 
-keyboard_device_id:	dat 0xffff
+keyboard_device_id:		dat 0xffff
+keyboard_wait_proc:		dat 0
 
-clock_device_id:	dat 0xffff
-clock_time:			dat 0, 0
-cursor_data:		dat 0, 0, 0			; pointer, mask, private. When nonzero, mask will be regularly XORed with memory at pointer.
+clock_device_id:		dat 0xffff
+clock_time:				dat 0, 0
+cursor_data:			dat 0, 0, 0			; pointer, mask, private. When nonzero, mask will be regularly XORed with memory at pointer.
+ctrl_held:				dat 0
+ctrl_keypress:			dat 0

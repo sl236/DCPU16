@@ -12,3 +12,4 @@ def kerntable_size			(kerntable_saved_sp+1)
 ; ----- settings
 def CLOCK_TICK_RATE			15			; clock rate is (60/CLOCK_TICK_RATE) Hz
 def CURSOR_BLINK_TIME_MASK	0xFFFE		; cursor blinks when (this & time') != time
+def STATUS_ROW				10			; area above is used by the shell; below is for background processes
