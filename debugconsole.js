@@ -89,14 +89,21 @@
   
   image:
   {
-     help: 'image path\file.b64\nResets emulator and reads a base 64 encoded memory image.',
+     help: 'image [file.b64]\nResets emulator and reads a base 64 encoded memory image. With no arguments, produces a base64 image from current memory content.',
      fn: function(_args) 
      { 
+     	if( _args.length )
+     	{
          Console.ReadFile
                 (
                     _args.join(' '),
                     function(data) { Emulator.LoadB64Image(data); }
                 );
+        }
+        else
+        {
+        	window.open( "data:application/octet-stream,"+Emulator.GetB64MemoryDump(), "image.dmp.b64" );
+        }
      }
   },
 

@@ -628,6 +628,7 @@
         var buffer = 0;
         var bits = 0;
         var pos = 0;
+        _b64 = _b64.replace((/[^A-Za-z0-9\/\+]/g),'');
         
         for( var i = 0; i < 65536; i++ )
         {
@@ -641,4 +642,35 @@
         }
     }
     
+    Emulator.GetB64MemoryDump = function()
+    {
+        var Codec=Emulator.B64Codec;
+        var buffer=0;
+        var bits=0;
+        var pos=0;
+        var result=[];
+
+        for(var i=0;i<65536;i++)
+        {
+            buffer=(buffer<<16)|Emulator.mem[i];
+            bits+=16;
+            while(bits>=6)
+            {
+                result.push(Codec[(buffer>>>(bits-6))&0x3F]);
+                bits-=6;
+            }
+        }
+        while(bits>0)
+        {
+            result.push(Codec[(buffer>>>(bits-6))&0x3F]);
+            bits-=6;
+        }
+
+        while((result.length%3)!=0)
+        {
+            result.push('=');
+        }
+
+        return result.join('');
+    }        
 })();                                         // (function(){
