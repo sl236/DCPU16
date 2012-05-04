@@ -589,3 +589,253 @@ Peripherals.push(function()
     }
         
 });
+
+
+// -------------
+// HMD2043 floppy drive 
+// -------------
+
+Peripherals.push(function()
+{
+    var media = null;
+    var message = 0xFFFF;
+    var pendingOp = null;
+    var sector_size = 512;
+    var flags = 0;
+    var lastInterrupt = 0;
+    var lastInterruptError = 0;
+    
+    var curr_sector = 0;
+    var sectors_per_track = 18;
+    var tracks = 80;
+    var full_stroke_ms = 200;
+    var sector_access_ms = 11;
+    var cycles_per_ms = 100;
+    
+    function executePendingOp()
+    {
+        var op = pendingOp;
+        pendingOp = null;
+        if( op ) 
+        { 
+            op(); 
+        }
+    }
+    
+    function readSectors( _B, _C, _X )
+    {
+        var result = 0;
+        if( _C )
+        {        
+            if( media )
+            {
+                var source = _B * sector_size;
+                var size = _C * sector_size;
+                if( (source + size) > media.length )
+                {
+                    result = 2; // ERROR_INVALID_SECTOR
+                }
+                else
+                {
+                    for( var i = 0; i < size; i++ )
+                    {
+                        Emulator.WriteMem( _X+i, media[source+i] );
+                    }
+                    curr_sector = _B + _C - 1;
+                }
+            }
+            else
+            {
+                result = 1; // ERROR_NO_MEDIA
+            }
+        }
+        return result;
+    }
+
+    function writeSectors(_B,_C,_X)
+    {
+        var result=0;
+        if( _C )
+        {
+            if(media)
+            {
+                var source=_B*sector_size;
+                var size=_C*sector_size;
+                if((source+size)>media.length)
+                {
+                    result=2; // ERROR_INVALID_SECTOR
+                }
+                else
+                {
+                    for(var i=0;i<size;i++)
+                    {
+                        media[source+i] = Emulator.mem[_X+i];
+                    }
+                    curr_sector = _B + _C - 1;
+                }
+            }
+            else
+            {
+                result=1; // ERROR_NO_MEDIA
+            }
+        }
+        return result;
+    }
+    
+    function calculateAccessTime( _B, _C, _X )
+    {
+        return Math.floor( Math.abs(_B - curr_sector) / (sectors_per_track) ) * full_stroke_ms / (tracks - 1) + (_C*sector_access_ms);        
+    }
+
+    function insertFloppy( _b64Image )
+    {
+        
+    }
+    
+    function ejectFloppy()
+    {
+        
+    }
+    
+    var deviceDesc = // https://gist.github.com/2495578
+    {
+        hwType: 0x74fa4cae,
+        hwRev: 0x07c2,
+        hwManufacturer: 0x21544948,
+        hwI: function()
+        {
+            switch (Emulator.regs[0])
+            {
+                case 0: // QUERY_MEDIA_PRESENT
+                        Emulator.regs[0] = 0;
+                        Emulator.regs[1] = media ? 1 : 0;
+                    break;
+                    
+                case 1: // QUERY_MEDIA_PARAMETERS
+                        if(media)
+                        {
+                            Emulator.regs[0] = 0;
+                            Emulator.regs[1] = sector_size;
+                            Emulator.regs[2] = ((((media.length)+sector_size-1) & ~(sector_size-1))>>>0)&0xFFFF;
+                        }
+                        else
+                        {
+                            Emulator.regs[0] = 1; // ERROR_NO_MEDIA
+                        }
+                    break;
+                        
+                case 2: // QUERY_DEVICE_FLAGS
+                        Emulator.regs[0] = 0;
+                        Emulator.regs[1] = flags;
+                    break;
+
+                case 3: // UPDATE_DEVICE_FLAGS
+                        Emulator.regs[0]=0;
+                        flags = Emulator.regs[1];
+                    break;
+                    
+                case 4: // QUERY_INTERRUPT_TYPE
+                        Emulator.regs[0]=lastInterruptError;
+                        Emulator.regs[1]=lastInterrupt;                    
+                    break;
+                    
+                case 5: // SET_INTERRUPT_MESSAGE
+                        Emulator.regs[0]=0;
+                        message = Emulator.regs[1];
+                    break;
+                    
+                case 0x10: // READ_SECTORS
+                    if(media)
+                    {
+                        if(!pendingOp)
+                        {
+                            if(flags&(1<<0)) // Non-blocking?
+                            {
+                                Emulator.regs[0]=0;
+                                pendingOp=(function(_B,_C,_X)
+                                {
+                                    return function()
+                                    {
+                                        lastInterruptError=readSectors(_B,_C,_X);
+                                        lastInterrupt=2; // READ_COMPLETE
+                                        Emulator.InterruptQueue.push({ Message: message });
+                                    }
+                                })(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
+                                setTimeout(executePendingOp,
+                                        Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]))
+                                    );
+                            }
+                            else
+                            {
+                                Emulator.regs[0]=readSectors(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
+                                return Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3])*cycles_per_ms);
+                            }
+                        }
+                        else
+                        {
+                            Emulator.regs[0]=3; // ERROR_PENDING
+                        }
+                    }
+                    else
+                    {
+                        Emulator.regs[0]=1; // ERROR_NO_MEDIA
+                    }
+                    break;
+                    
+                case 0x11: // WRITE_SECTORS
+                    if(media)
+                    {
+                        if(!pendingOp)
+                        {
+                            if(flags&(1<<0)) // Non-blocking?
+                            {
+                                Emulator.regs[0]=0;
+                                pendingOp=(function(_B,_C,_X)
+                                {
+                                    return function()
+                                    {
+                                        lastInterruptError=writeSectors(_B,_C,_X);
+                                        lastInterrupt=2; // READ_COMPLETE
+                                        Emulator.InterruptQueue.push({ Message: message });
+                                    }
+                                })(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
+                                setTimeout(executePendingOp,
+                                        Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]))
+                                    );
+                            }
+                            else
+                            {
+                                Emulator.regs[0]=writeSectors(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
+                                return Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3])*cycles_per_ms);
+                            }
+                        }
+                        else
+                        {
+                            Emulator.regs[0]=3; // ERROR_PENDING
+                        }
+                    }
+                    else
+                    {
+                        Emulator.regs[0]=1; // ERROR_NO_MEDIA
+                    }
+                    break;
+                
+                case 0xFFFF: // QUERY_MEDIA_QUALITY
+                        if( media )
+                        {
+                            Emulator.regs[0] = 0;
+                            Emulator.regs[1] = 0x7FFF;
+                        }
+                        else
+                        {
+                            Emulator.regs[0] = 1; // ERROR_NO_MEDIA
+                        }                        
+                    break;
+            }
+            
+            return 0;      
+        }
+    };
+    
+    Emulator.Devices.push(deviceDesc);
+});

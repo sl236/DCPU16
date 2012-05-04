@@ -413,32 +413,6 @@
     }
 
     // -------------
-    // Utility
-    // -------------
-    // -----------------------
-    Console.H8 = function(_i)
-    {
-        var h = _i.toString(16);
-        while (h.length < 2)
-        {
-            h = '0' + h;
-        }
-        return h;
-    }
-
-    // -----------------------
-    Console.H16 = function(_i)
-    {
-        var h = _i.toString(16);
-        while (h.length < 4)
-        {
-            h = '0' + h;
-        }
-        return h;
-    }
-
-
-    // -------------
     // Bootstrapping
     // -------------
     Console.Boot = function()

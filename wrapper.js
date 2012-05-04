@@ -25,6 +25,7 @@ function setTimeout( _fn, _time )
 }
 
 load('globals.js');
+load('util.js');
 load('parser.js');
 load('assembler.js');
 
@@ -61,86 +62,6 @@ load('assembler.js');
     {
         Emulator.mem[_addr] = _value;
     }
-
-    Emulator.Dump = function(_arg)
-    {
-        var addr = _arg.shift();
-        var count = _arg.shift();
-        addr = (addr == undefined) ? 0 : parseInt(addr) & 0xFFF0;
-        count = (count == undefined) ? 1 : parseInt(count);
-        var result = '';
-        for (var i = 0; i < count; i++)
-        {
-            result += Console.H16(addr) + ':  ';
-            for (var j = 0; j < 8; j++)
-            {
-                result += Console.H16(Emulator.mem[addr++]) + ' ';
-            }
-            result += '\n' + Console.H16(addr) + ':  ';
-            for (var j = 0; j < 8; j++)
-            {
-                result += Console.H16(Emulator.mem[addr++]) + ' ';
-            }
-            result += '\n';
-        }
-        result = result.substring(0, result.length - 1);
-        Console.Log(result);
-    }
-
-    Emulator.B64Codec = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    Emulator.GetB64MemoryDump = function()
-    {
-        var Codec=Emulator.B64Codec;
-        var buffer=0;
-        var bits=0;
-        var pos=0;
-        var result=[];
-
-        for(var i=0;i<65536;i++)
-        {
-            buffer=(buffer<<16)|Emulator.mem[i];
-            bits+=16;
-            while(bits>=6)
-            {
-                result.push(Codec[(buffer>>>(bits-6))&0x3F]);
-                bits-=6;
-            }
-        }
-        while(bits>0)
-        {
-            result.push(Codec[(buffer>>>(bits-6))&0x3F]);
-            bits-=6;
-        }
-
-        while((result.length%3)!=0)
-        {
-            result.push('=');
-        }
-
-        return result.join('');
-    }
-    
-    Console.H8 = function(_i)
-    {
-        var h = _i.toString(16);
-        while (h.length < 2)
-        {
-            h = '0' + h;
-        }
-        return h;
-    }
-
-    // -----------------------
-    Console.H16 = function(_i)
-    {
-        var h = _i.toString(16);
-        while (h.length < 4)
-        {
-            h = '0' + h;
-        }
-        return h;
-    }
-
 
     var font =
     [
