@@ -14,7 +14,7 @@ idleproc_entry:
 	
 	set a, [ctrl_keypress]			; check for ctrl+key combo
 	ife a, 0						; got one?
-		set pc, 1f					; nope; skip to next section
+		b 1f						; nope; skip to next section
 	set [ctrl_keypress], 0			; picked it up
 	
 	set x, ich_table				; first handler block
@@ -40,6 +40,29 @@ idleproc_entry:
 	set A, [clock_time]				; bottom word of clock
 	add B, 5						; skip the colon
 	jsr format_hex					;
+	set A, [freemem_size]			; free memory size
+	add B, 5						; skip the space
+	jsr format_hex					;
+	
+	set j, idleproc_statusline + 0x10
+	set b, idleproc_statusline + 0x20
+	set i, [screen_curr_terminal]	; curr terminal
+	ife i, 0
+		b 2f
+	set i, [i+term_owner]			; its owning process
+	set i, [i+kerntable_block_start]; its header
+	set i, [i+kernheader_identifier]; identifier
+1:
+	ife [i], 0
+		b 2f
+	sti [j], [i]
+	ifn j, b
+		b 1b
+2:
+	sti [j], ' '
+	ifn j, b
+		b 2b
+	
 	set I, idleproc_statusline		; from start of status
     set j, [screen_curr_terminal]
    	set j, [j+kernheader_terminal_handle]	; to start of vram
@@ -71,7 +94,7 @@ ich_table:
 	
 idleproc_statusline:
 	;	 0123456789ABCDEF0123456789ABCDEF
-	dat	"0123:4567 ----------------------", 0
+	dat	"0123:4567 0000 |                ", 0
 		
 	RESERVE_WORDS( 0x20 )	; stack space
 	

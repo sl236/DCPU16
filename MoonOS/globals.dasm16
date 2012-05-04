@@ -5,6 +5,8 @@ freelist:		dat freemem_first		; freelist next pointer
 				dat freemem_last		; freelist prev pointer
 				dat freelist			; freelist head block start
 
+freemem_size:	dat 0
+
 screen_device_id:		dat 0xffff
 screen_curr_terminal:	dat 0
 

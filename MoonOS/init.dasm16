@@ -11,8 +11,18 @@ initproc_header:
 
 init:  
   set [1], exit_impl			; the jump at location 0 needs to go to the Exit implementation
-  set sp, initproc_table	; at boot, the stack pointer was not set up for us
-  ias isr_entry					  ; can now handle interrupts
+  set sp, initproc_table		; at boot, the stack pointer was not set up for us
+  ias isr_entry					; can now handle interrupts
+  
+	; -- Free memory size calculation
+	set x, freelist
+1:
+	set a, x
+	sub a, [x+kerntable_block_start]
+	add [freemem_size], a
+	set x, [x]
+	ifn x, freelist
+		b 1b
   
 	; -- Device enumeration
   set i, 0						; running device count
@@ -96,8 +106,10 @@ init_hw_end:
 1:
   
   ; hand ownership of our terminal over to the shell
-  set [shellproc_header+kernheader_terminal_handle], [initproc_header+kernheader_terminal_handle]
+  set x, [initproc_header+kernheader_terminal_handle]
+  set [shellproc_header+kernheader_terminal_handle], x
   set [initproc_header+kernheader_terminal_handle], 0
+  set [x+term_owner], shellproc_table
 
   ; insert shell into process list
   iaq 1                   ; critical section

@@ -25,7 +25,8 @@ def term_vram				0
 def term_charmap			1
 def term_palette			2
 def term_border_colour		3
-def term_block_handle		4
+def term_owner				4
+def term_block_handle		5
 def term_desc_size			(term_block_handle+1)
 
 def term_alloc_flag_charmap (1<<0)
