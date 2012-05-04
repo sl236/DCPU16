@@ -1,0 +1,103 @@
+; ----- malloc
+; ----- allocate X words of memory; returns block table ptr in X
+def align 16
+malloc:
+  set push, a
+  set push, b
+  set push, c
+  set push, z
+  set A, freelist         ; freelist head
+
+1:
+  set A, [A]              ; next block
+  ife A, freelist         ; if we're back at the head
+    set pc, out_of_memory ; then not much we can do
+  set B, A                ; grab a copy
+  sub B, [A + kerntable_block_start]  ; work out how big the block is
+  ifg X, B                ; if we need more memory
+    b 1b                  ; go around
+        
+  set C, B                ; we know B>=X
+  sub C, X                ; so this is always >=0
+  set B, A                ; block start
+  sub B, X                ; new process wants to start here    
+  ifg (align+4), C        ; block too small to split?
+    b 1f                  ; give the caller the whole thing
+  
+  set C, B                      ; new block start
+  sub C, kerntable_size         ; new free block can live here
+  set [C], A													; block detached: its next points to the old block
+  set Z, [A+kerntable_prev]										; (fetch old block's prev)
+  set [C+kerntable_prev], Z										; and its prev to the old block's prev
+  set [A+kerntable_prev], C										; the old block's prev points to the new block
+  set [Z], C													; as does the old block's prev's next
+  set [C+kerntable_block_start], [A+kerntable_block_start]		; the new block starts where the old block used to
+  set [A+kerntable_block_start], B								; and that starts where the new one ends
+  
+1:
+  ; whatever happened, A currently holds a suitable block
+  ; that block is still in the freelist right now so let's detach it
+  set X, [A+kerntable_block_start]	; start
+  sub X, A					; negative size
+  add [freemem_size], X		; add to running free memory total
+  set X, A            ; copy block start to X
+  jsr dll_delete      ; remove it from the freelist
+  set z, pop
+  set c, pop
+  set b, pop
+  set a, pop
+  set pc, pop		  ; return
+
+; ----- Free
+; ----- Release memory described by X back to the system. X is trashed.
+free:
+  set push, a
+  set push, b
+  set push, c
+  set push, y
+  
+  set a, x							; end
+  sub a, [x+kerntable_block_start]	; size
+  add [freemem_size], a				; add to running free memory total
+  
+  set y, freelist     ; head of freelist
+1:
+  set y, [y]          ; next free block
+  ife y, freelist     ; have we come back to the start?
+    b 1f              ; then X should be last in the list; bail
+  ifg x, y            ; if's still before X
+    b 1b              ; keep looking
+1:
+
+  jsr dll_splice      ; insert X here
+  
+  ; if a+kerntable_size == x, we should coalesce them
+  ; likewise if x+kerntable_size == Y, we should coalesce those
+
+  set c, x                ; take a copy of x
+  set b, a                ; copy a
+  add b, kerntable_size   ; add kerntable_size
+  ifn b, x                ; if it's not equal to x
+    b 1f                  ; don't coalesce
+  
+  set [x+kerntable_block_start], [a+kerntable_block_start]  ; the new block starts where a used to
+  set x, a                ; now we can remove a from the freelist
+  jsr dll_delete          ; so do that
+  set x, c                ; put x back for next operation
+    
+1:
+  add c, kerntable_size   ; c still holds a copy of x
+  ifn c, y                ; if that's not equal to y
+    b 1f                  ; don't coalesce
+  
+  set [y+kerntable_block_start], [x+kerntable_block_start]  ; Y now starts where X used to
+  jsr dll_delete          ; and we can remove x from the list
+1:    
+
+  set y, pop
+  set c, pop
+  set b, pop
+  set a, pop
+  set pc, pop
+
+
