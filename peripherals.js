@@ -595,7 +595,7 @@ Peripherals.push(function()
 // HMD2043 floppy drive 
 // -------------
 
-Peripherals.push(function()
+Peripherals.push(function( _debugCommands )
 {
     var media = null;
     var message = 0xFFFF;
@@ -689,12 +689,22 @@ Peripherals.push(function()
 
     function insertFloppy( _b64Image )
     {
-        
+        media = Emulator.DecodeB64Image( _b64Image );
+        if(flags&(1<<1)) // media status interrupts?
+        {
+            lastInterrupt=1;        // MEDIA_STATUS
+            Emulator.InterruptQueue.push({ Message: message });                 
+        }
     }
     
     function ejectFloppy()
     {
-        
+        media=null;
+        if(flags&(1<<1)) // media status interrupts?
+        {
+            lastInterrupt=1;        // MEDIA_STATUS
+            Emulator.InterruptQueue.push({ Message: message });
+        }
     }
     
     var deviceDesc = // https://gist.github.com/2495578
@@ -716,7 +726,7 @@ Peripherals.push(function()
                         {
                             Emulator.regs[0] = 0;
                             Emulator.regs[1] = sector_size;
-                            Emulator.regs[2] = ((((media.length)+sector_size-1) & ~(sector_size-1))>>>0)&0xFFFF;
+                            Emulator.regs[2] = (((media.length) & ~(sector_size-1))>>>0)&0xFFFF;
                         }
                         else
                         {
@@ -835,6 +845,46 @@ Peripherals.push(function()
             
             return 0;      
         }
+    };
+
+    _debugCommands.floppy=
+    {
+        help: 'floppy [image.b64]\nLoads a base 64 encoded floppy image into emulated drive. With no arguments, produces a base64 image of current floppy contents.',
+        fn: function()
+        {
+            if(_args.length)
+            {                
+                Console.ReadFile
+                (
+                    _args.join(' '),
+                    function(data) 
+                    {
+                        if(media)
+                        {
+                            ejectFloppy();
+                        }
+                        
+                        media = Emulator.DecodeB64Image(data); 
+                    }
+                );
+            }
+            else
+            {
+                if( media )
+                {
+                    window.open("data:application/octet-stream,"+Emulator.EncodeB64Image(media),"image.dmp.b64");                
+                }
+            }
+        }
+    };
+    
+    _debugCommands.eject = 
+    {
+      help: 'eject\nEjects any floppy image from emulated drive.',
+      fn: function()
+      {
+          ejectFloppy();
+      }    
     };
     
     Emulator.Devices.push(deviceDesc);

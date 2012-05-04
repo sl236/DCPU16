@@ -425,7 +425,7 @@
         Emulator.Reset();
         for( var i = 0; i < Peripherals.length; i++ )
         {
-            Peripherals[i]();
+            Peripherals[i](DebugCommands);
         }
 
         document.onkeypress = function(e)

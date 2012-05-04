@@ -8,28 +8,50 @@
 
 Emulator.B64Codec="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-Emulator.LoadB64Image=function(_b64)
+Emulator.DecodeB64Image=function(_b64)
 {
-    Emulator.Reset();
+    _b64=_b64.replace((/[^A-Za-z0-9\/\+]/g),'');
+    var len = Math.floor(((_b64.length * 6)+7) / 8);
+    var result = new Array(len);
+    try
+    {
+       result = new Uint16Array(len);
+    }
+    catch(e)
+    {
+    
+    }
+
     var Codec=Emulator.B64Codec;
     var buffer=0;
     var bits=0;
     var pos=0;
-    _b64=_b64.replace((/[^A-Za-z0-9\/\+]/g),'');
 
-    for(var i=0;i<65536;i++)
+    for(var i=0;i<len;i++)
     {
         while(bits<16)
         {
             buffer=(buffer<<6)|Codec.indexOf(_b64[pos++]);
             bits+=6;
         }
-        Emulator.mem[i]=(buffer>>>(bits-16))&0xFFFF;
+        result[i]=(buffer>>>(bits-16))&0xFFFF;
         bits-=16;
+    } 
+    
+    return result;   
+}
+
+Emulator.LoadB64Image=function(_b64)
+{
+    Emulator.Reset();
+    var m = Emulator.DecodeB64Image(_b64);
+    for(var i=0;i<65536;i++)
+    {
+        Emulator.mem[i]=m[i];
     }
 }
 
-Emulator.GetB64MemoryDump=function()
+Emulator.EncodeB64Image=function(_uint16array)
 {
     var Codec=Emulator.B64Codec;
     var buffer=0;
@@ -37,24 +59,24 @@ Emulator.GetB64MemoryDump=function()
     var pos=0;
     var result=[];
 
-    for(var i=0;i<65536;i++)
+    for(var i=0;i<_uint16array.length;i++)
     {
-        buffer=(buffer<<16)|Emulator.mem[i];
+        buffer=(buffer<<16)|_uint16array[i];
         bits+=16;
         while(bits>=6)
         {
             result.push(Codec[(buffer>>>(bits-6))&0x3F]);
             bits-=6;
         }
-        if( ( i % 80 ) == 79 )
+        if((i%80)==79)
         {
             result.push("\n");
         }
     }
-    while((bits%6) != 0)
+    while((bits%6)!=0)
     {
         buffer<<=8;
-        bits+=8;    
+        bits+=8;
     }
     while(bits>0)
     {
@@ -62,9 +84,17 @@ Emulator.GetB64MemoryDump=function()
         bits-=6;
     }
 
-    result.push('=');
+    for( var i = 0; i < (_uint16array.length % 3); i++ )
+    {
+        result.push('=');    
+    }
 
     return result.join('');
+}
+
+Emulator.GetB64MemoryDump=function()
+{
+    return Emulator.EncodeB64Image(Emulator.mem);
 }        
 
 // -----------------------
