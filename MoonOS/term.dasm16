@@ -78,8 +78,11 @@ term_release:
 		jsr term_rotate_left				; not any more...
 	set a, LEM1802_MEM_MAP_SCREEN			; prepare to turn it off
 	set b, 0
-	ife y, [screen_curr_terminal]			; and if the rotation failed, do so
-		hwi [screen_device_id]
+	ifn y, [screen_curr_terminal]			; and if the rotation failed, do so
+		b 1f
+	
+	hwi [screen_device_id]
+	set [screen_curr_terminal], 0
 	
 	set x, [y+term_block_handle]			; get the memory block handle
 	jsr dll_delete							; remove it from the terminal list

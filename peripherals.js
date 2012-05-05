@@ -25,6 +25,7 @@ Peripherals.push(function()
     $('#emulation').html('<canvas class="crisp" id="screen" width="640" height="512" />');
     var screen = document.getElementById('screen');
     var screenDC = screen.getContext('2d');
+    var defaultImage = null;
 
     var defaultFont =
             [
@@ -267,6 +268,13 @@ Peripherals.push(function()
                         updateScreen(i, Emulator.mem[i]);
                     }
                 }
+                else
+                {
+			        if( defaultImage )
+			        {
+			        	screenDC.drawImage( defaultImage, -16, -16 );
+			        }
+                }
                 return 0;
 
             case 1:
@@ -353,6 +361,10 @@ Peripherals.push(function()
             }
         }
         vramBase=0;
+        if( defaultImage )
+        {
+        	screenDC.drawImage( defaultImage, -16, -16 );
+        }
         if(fontBase!=0)
         {
             for(var i=fontBase;i<(fontBase+0x100);i++)
@@ -405,6 +417,19 @@ Peripherals.push(function()
         hwI: onInterrupt,
         hwReset: onReset
     };
+
+    (function(){
+    	var imageHolder = new Image();
+    	imageHolder.onload = function()
+    	{
+    		defaultImage = imageHolder;
+    		if(!vramBase)
+    		{
+    			screenDC.drawImage( defaultImage, -16, -16 );
+    		}
+    	}
+    	imageHolder.src="LEM1802.png";
+    })();
 
     Emulator.Devices.push(deviceDesc);
     setTimeout( onToggleBlink, 500 );
