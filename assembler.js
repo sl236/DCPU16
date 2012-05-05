@@ -39,7 +39,7 @@
 
     function CountAssembledWords(_words)
     {
-        Assembler.MemMap[Assembler.LabelResolver.pc] = Assembler.CurrLineNumber;
+        Assembler.MemMap[Assembler.LabelResolver.pc] = [Assembler.CurrLineNumber, (function(_fn){return function(){return _fn();}})(Assembler.CurrLine) ];
         Assembler.LabelResolver.pc += _words;
     }
 
@@ -381,7 +381,7 @@
           }
         ],
 
-        spindirect: ["/\\[\\s*(;sp|pick)\\s*/ expression /\\s*\\]/",
+        spindirect: ["/\\[\\s*((;sp\\s*\\+\\s*)|pick)\\s*/ expression /\\s*\\]/",
           function(_m) { 
                   CountAssembledWords(1);
                   return (function(e)

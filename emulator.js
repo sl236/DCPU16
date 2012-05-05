@@ -146,9 +146,9 @@
                 var interrupt = Emulator.InterruptQueue.shift();
                 Emulator.InterruptQueueEnable=1;
                 Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
-                Emulator.mem[Emulator.regs[8]] = Emulator.regs[9];
+                Emulator.WriteMem(Emulator.regs[8], Emulator.regs[9]);
                 Emulator.regs[8] = (Emulator.regs[8] + 0xFFFF) & 0xFFFF;
-                Emulator.mem[Emulator.regs[8]] = Emulator.regs[0];
+                Emulator.WriteMem(Emulator.regs[8], Emulator.regs[0]);
                 Emulator.regs[0] = ((interrupt.Message) >>> 0) & 0xFFFF;
                 Emulator.regs[9] = Emulator.regs[13];
                 Emulator.cycles += 2;
@@ -440,15 +440,15 @@
         if (Assembler.Lines
             && Assembler.MemMap
             && Assembler.MemMap[_addr]
-            && Assembler.Lines[Assembler.MemMap[_addr] - 1]
+            && Assembler.Lines[Assembler.MemMap[_addr][0] - 1]
         )
         {
-            while (result.length < 56)
+            while (result.length < 30)
             {
                 result = result + ' ';
             }
-            result += '; ' + Assembler.MemMap[_addr] + ': ';
-            result += Assembler.Lines[Assembler.MemMap[_addr] - 1].replace(/\t/g, ' ').substr(0, 130 - result.length);
+            result += '; ' + Assembler.MemMap[_addr][1]() + ': ';
+            result += Assembler.Lines[Assembler.MemMap[_addr][0] - 1].replace(/\t/g, ' ').substr(0, 130 - result.length);
         }
 
         return [result, size + 1];

@@ -4,15 +4,17 @@
 initproc_header:
 	dat 0						; terminal handle
 	dat 0						; message handler
-	dat shellproc_identifier	; we'll be handing over to the shell when we're done, so use its identifier
-	dat 0						; entrypoint
+	dat initproc_identifier		; identifier
 
 .org initproc_header + kernheader_size
 
+initproc_identifier:
+	dat "MoonOS init", 0
+
 init:  
-  set [1], exit_impl			; the jump at location 0 needs to go to the Exit implementation
-  set sp, initproc_table		; at boot, the stack pointer was not set up for us
-  ias isr_entry					; can now handle interrupts
+	set [1], exit_impl			; the jump at location 0 needs to go to the Exit implementation
+	set sp, initproc_table		; at boot, the stack pointer was not set up for us
+	ias isr_entry					; can now handle interrupts
   
 	; -- Free memory size calculation
 	set x, freelist
@@ -84,49 +86,16 @@ init_hw_end:
 	; -- done initialising devices
   ife [screen_device_id], 0xffff  	; do we have a screen?
     sub pc, 1           			; if not, we don't know how to continue.
-    
-  ; allocate a terminal; no special requirements
-  set a, 0
-  jsr term_alloc
-    
-  ; populate screen with init_message
-  set i, init_message     			; message data
-  set j, [screen_curr_terminal]   	; terminal descriptor
-  set j, [j+term_vram]				; VRAM start
-  set [shellproc_line_vram_start], j  ; tell the shell where it is
-  add j, SCREEN_COLUMNS   ; shell will scroll console up on entry, so no point writing anything to top line
-1:
-  set c, [i]              ; fetch colour
-  ife c, 0                ; if it's zero
-    b 1f                  ;   we're done
-  add i, 1                ; skip over colour
-  jsr strcpy              ; copy text
-  add i, 1                ; skip over null terminator
-  b 1b                    ; go around
-1:
   
-  ; hand ownership of our terminal over to the shell
-  set x, [initproc_header+kernheader_terminal_handle]
-  set [shellproc_header+kernheader_terminal_handle], x
-  set [initproc_header+kernheader_terminal_handle], 0
-  set [x+term_owner], shellproc_table
+  jsr spawn_new_shell			; fork a shell
+  jsr TaskSwitch
+;  jsr spawn_new_shell			; fork another shell
+;  jsr TaskSwitch
+;  jsr term_rotate_left			; rotate terminals left
+;  jsr TaskSwitch
+  set pc, Exit            		; exit, releasing this memory to the system   
 
-  ; insert shell into process list
-  iaq 1                   ; critical section
-  set x, shellproc_table  ; shell process table
-  set y, [proclist]       ; current process
-  jsr dll_splice          ; splice shell process in just before us
-  iaq 0                   ; end of critical section
-
-  set pc, Exit            ; release init process memory to system
-
-init_message:
-;              0123456789ABCDEF0123456789ABCDEF
-  dat 0x2000, "MoonOS 0.1                      ", 0
-  dat 0x2000, "Luna City 1985                  ", 0
-  dat 0
-
-  	RESERVE_WORDS( 0x20 )	; stack
+  RESERVE_WORDS( 0x20 )	; stack
   
 initproc_table:
   dat idleproc_table    ; next

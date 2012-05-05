@@ -23,13 +23,16 @@ isr_handle_keyboard:
 	ifn c, 0					; *is* it held?
 		b isr_hk_ctrl			; if so, users don't see our keypresses
 	
-	ife [keyboard_wait_proc], 0	; process waiting on keyboard?
-		b isr_hk_fastexit		; nope. Bail.
+    set b, [screen_curr_terminal]	; got a foreground terminal?
+    ife b, 0						; nope, so can't have a process blocking on it
+    	b isr_hk_fastexit
+	ife [b+term_waiting_keyproc], 0	; process waiting on keyboard?
+		b isr_hk_fastexit			; nope. Bail.
 		
 	set push, x					; can't trash registers of whatever we interrupted, store them
 	set push, y					
-	set x, [keyboard_wait_proc]	; fetch waiting process
-	set [keyboard_wait_proc], 0 ; it's not waiting any more
+	set x, [b+term_waiting_keyproc]	; fetch waiting process
+	set [b+term_waiting_keyproc], 0 ; it's not waiting any more
 	set y, [proclist]			; active process
 	jsr dll_splice				; add the process that was waiting just before it
 	set y, pop					; restore registers

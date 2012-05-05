@@ -21,16 +21,17 @@ idleproc_entry:
 	jsr ich_find_handler			; go find something to handle the keypress
 	
 1:
-	ife [screen_curr_terminal], 0	; if we don't have a screen
+	set i, [screen_curr_terminal]	; terminal handle
+	ife i, 0						; if we don't have a terminal
 		set pc, TaskSwitch			; nothing more to do here
 	
 	set A, [clock_time]				; blink cursor: get the time
 	set B, A						; copy it
 	and B, CURSOR_BLINK_TIME_MASK	; mask with blink rate mask
-	set C, [cursor_data]			; grab cursor pointer
-	ifn B, [cursor_data+2]			; if time has changed since last blink
-		xor [C], [cursor_data+1]	; blink the cursor
-	set [cursor_data+2], B			; update blink time
+	set C, [i+term_cursor_ptr]		; grab cursor pointer
+	ifn B, [i+term_cursor_tick]		; if time has changed since last blink
+		xor [C], [i+term_cursor_mask]	; blink the cursor
+	set [i+term_cursor_tick], B		; update blink time
 	
 	; update status line
 	set A, [clock_time+1]			; top word of clock
@@ -43,13 +44,10 @@ idleproc_entry:
 	set A, [freemem_size]			; free memory size
 	add B, 5						; skip the space
 	jsr format_hex					;
-	
+			
 	set j, idleproc_statusline + 0x10
 	set b, idleproc_statusline + 0x20
-	set i, [screen_curr_terminal]	; curr terminal
-	ife i, 0
-		b 2f
-	set i, [i+term_owner]			; its owning process
+	set i, [i+term_owner]			; current terminal's owning process
 	set i, [i+kerntable_block_start]; its header
 	set i, [i+kernheader_identifier]; identifier
 1:
@@ -63,7 +61,7 @@ idleproc_entry:
 	ifn j, b
 		b 2b
 	
-	set I, idleproc_statusline		; from start of status
+	set i, idleproc_statusline		; from start of status
     set j, [screen_curr_terminal]
    	set j, [j+kernheader_terminal_handle]	; to start of vram
 	add J, 32*STATUS_ROW			; plus the status row offset
@@ -90,8 +88,18 @@ ich_find_handler:	; -- loop through control key combo handler blocks, branch to 
 	
 	; first, last, next, branch table
 ich_table:
-	dat 0x82, 0x83, 0, term_rotate_left, term_rotate_right
+	dat 0x82, 0x83, 1f, term_rotate_left, term_rotate_right
+1:	dat 'n', 'n', 0, spawn_new_shell
+
+spawn_new_shell:
+	set x, SCREEN_COLUMNS + 0x20 + kernheader_size	; line buffer, decent stack and the process header
+  	set push, [proclist]			; push current process handle
+  	jsr Fork						; create a process
+  	ifn [proclist], pop				; are we the original process?    
+  		set pc, shellproc_entry		; the child gets the shell
+  	set pc, pop						; the parent returns
 	
+
 idleproc_statusline:
 	;	 0123456789ABCDEF0123456789ABCDEF
 	dat	"0123:4567 0000 |                ", 0

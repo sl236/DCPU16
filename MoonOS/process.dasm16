@@ -22,29 +22,35 @@ exit_impl:
 ; ----- Old process's stack will be copied to new process space.
 ; ----- Execution will resume in old process space for both processes, however the new process' SP will point to the new stack
 
-def align 16
 fork_impl:
-  set A, [proclist]       ; current process' table
-  sub A, SP               ; area required for current stack
-  add A, 8				  ; ensure space for ISRs and kernel calls
-  add A, (align-1)        ; align to a sensible size: pad
-  and A, ~(align-1)       ; and mask
-  ifg A, X                ; if the result is more than caller asked for
-    set X, A              ; use that instead so we don't crash
+  set A, [proclist]       		; current process' table
+  sub A, SP               		; area required for current stack
+  add A, 0x20+kernheader_size	; ensure space for ISRs, kernel calls, process header
+  ifg A, X                		; if the result is more than caller asked for
+    set X, A              		; use that instead
 
-  jsr malloc			  ; allocate process memory
+  jsr malloc			  		; allocate process memory
   
+  	; clear process header
+  	set j, [x+kerntable_block_start]
+  	set y, j
+  	add y, kernheader_size
+1:
+	sti [j], 0
+	ifn j, y
+		b 1b
+		  
   ; now we need to copy the stack over  
-  set I, [proclist]   ; stack starts at the process table
-  set J, X            ; new stack starts at the new process table
+  set i, [proclist]   ; old stack starts at the process table
+  set j, x            ; new stack starts at the new process table
   
 1:
-  std [J], [I]		  ; copy and decrement
-  ifn I, SP           ; if we've not copied the whole stack
+  std [j], [i]		  ; copy and decrement
+  ifn i, SP           ; if we've not copied the whole stack
     b 1b              ; go around
-  set [J], [I]		  ; copy last word
+  set [j], [i]		  ; copy last word
 
-  set [X+kerntable_saved_sp], J ; store new process SP
+  set [x+kerntable_saved_sp], j ; store new process SP
   
   set Y, [proclist]   ; current process table address
   iaq 1				  ; critical section

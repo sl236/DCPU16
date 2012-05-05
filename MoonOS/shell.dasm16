@@ -7,200 +7,88 @@ def SHELL_ROWS      10
 def SHELL_COLOUR    0x2000
 def CURSOR_MASK     0x2200
 
-shellproc_header:
-	dat 0						; terminal handle
-	dat 0						; message handler
-	dat shellproc_identifier	;
-	dat 0						; entrypoint
+shell_identifier:
+  dat "shell", 0
 
-.org shellproc_header + kernheader_size
-
-shellproc_identifier:
-	dat "shell", 0
-
-; ---- data area
-
-shellproc_line_buffer_memory:
-  RESERVE_WORDS( SCREEN_COLUMNS )
-shellproc_line_buffer_memory_end:
-  dat 0	; space for NULL
-
-shellproc_line_cursor:
-  dat 0
-shellproc_line_end:
-  dat 0
-
-shellproc_line_vram_start:
-  dat 0  
-shellproc_line_vram_curr:
-  dat 0
+shell_greeting:
+  dat "MoonOS 0.1 -- Luna City 1985", 0
 
 shellproc_scroll:
-  set i, [shellproc_line_vram_start]  ; VRAM start
+  set i, [proclist]							; current process
+  set i, [i+kerntable_block_start]			; its header	
+  set i, [i+kernheader_terminal_handle] 	; its terminal descriptor
+  set i, [i+term_vram]						; start of VRAM
   set j, i
-  add j, SCREEN_COLUMNS               ; next row down
+  add j, SCREEN_COLUMNS               		; next row down
   set x, i
   add x, (SCREEN_COLUMNS * (SHELL_ROWS-1))		; end of scroll area
 
 1:
   sti [i], [j]  ; copy to row above
+  sti [i], [j]
+  sti [i], [j]
+  sti [i], [j]
+  sti [i], [j]
+  sti [i], [j]
+  sti [i], [j]
+  sti [i], [j]
   ifn i, x      ; end of area?
     b 1b        ; no, go around
   set pc, pop	; return
 
 ; ---- entrypoint
 shellproc_entry:
-  jsr shellproc_scroll	; make a new line
-      
-  set [shellproc_line_vram_curr], [shellproc_line_vram_start]		; start of VRAM
-  add [shellproc_line_vram_curr], (SCREEN_COLUMNS * (SHELL_ROWS-1))	; line entry will be here  
-  set [shellproc_line_cursor], shellproc_line_buffer_memory		; cursor posn in buffer
-  set [shellproc_line_end], shellproc_line_buffer_memory+1		; end of used area
-  set [shellproc_line_buffer_memory], 0							; null terminator	
-
-shellproc_update_screen:        
-  set i, shellproc_line_buffer_memory       ; update display: from buffer memory
-  set j, [shellproc_line_vram_curr]         ; to VRAM...
-  set x, j									; (also find end of line
-  add x, SCREEN_COLUMNS						;  while we have the value around)
-  set c, SHELL_COLOUR                       ; ...using the shell colour
-  jsr strcpy                                ; and copy
-
-1:
-  sti [j], 0								; clear rest of line
-  ifn j, x									; at end of line?
-    b 1b									; go around
-
-shellproc_readline_loop:
-	set a, [shellproc_line_vram_curr]       ; calc cursor posn
-	add a, [shellproc_line_cursor]			; it's (vram + cursor ptr) - start ptr
-	sub a, shellproc_line_buffer_memory
-	set [cursor_data], a					; store that
-	set [cursor_data+1], CURSOR_MASK		; enable cursor
-	set [cursor_data+2], 0					; display immediately
+	set x, [proclist]								; our process handle
+	set x, [x+kerntable_block_start]				; our header block
+	set [x+kernheader_identifier], shell_identifier	; set the process identifier
 	
-	jsr TaskSwitch						; give others a chance to run
-	
-	set B, 1							; use blocking form
-	jsr ReadChar						; fetch next char
-	
-	set z, [shellproc_line_cursor]		; address of insertion point in buffer
-	set z, [z]							; character at insertion point
-	ifn z, 0							; if it's not null
-		bor z, SHELL_COLOUR					; use shell colour
-	set x, [cursor_data]				; current cursor address
-	set [x], z							; update VRAM, hiding cursor if present	
-	set [cursor_data+1], 0				; ensure it's not made visible partway through editing
+	; allocate a terminal for this shell
+	set a, 0			; no particular requirements
+	jsr term_alloc
+
+	; populate screen
+	set i, shell_greeting    			; message data
+	set j, [proclist]						; current process
+	set j, [j+kerntable_block_start]		; its header	
+	set j, [j+kernheader_terminal_handle] 	; its terminal descriptor
+	set j, [j+term_vram]				; VRAM start
+	set x, j							; grab a copy
+	add x, (SCREEN_COLUMNS * (SHELL_ROWS-1))	; end of usable area
+	add j, SCREEN_COLUMNS   			; main loop scrolls console up so no point writing anything to top line
+	set c, 0x2000						; colour
+	jsr strcpy             				; copy text
+shellproc_clear_j_to_x:
+	sti [j], 0						; clear rest of screen
+	ifn j, x
+		b shellproc_clear_j_to_x
   
-	ifl C, 0x1e                 ; editing char?
-		set pc, shellproc_handle_edit   ; handle that
-	ifg c, 0x83							; above set of known codes?
-		set pc, shellproc_readline_loop	; ignore
-	ifg C, 0x7f											; arrow?
-		set pc, [c + shellproc_arrow_handlers - 0x80]	; handle that
-
-	; insert regular character
-	set i, [shellproc_line_end]               ; current end of line
-	ife i, shellproc_line_buffer_memory_end   ; out of memory?
-		set pc, shellproc_readline_loop       ; drop the keypress
-
-	set x, [shellproc_line_cursor]            ; current cursor pos
-	set j, i                                  ; line end
-	add i, 1                                  ; we're adding a character
-1:
-	std [i], [j]                              ; shuffle characters up
-	ifn j, x                                  ; at cursor position?
-		b 1b                                    ; no, keep shuffling
-	set [i], [j]                              ; character under cursor as well
-
-	set [x], c                                ; new character goes here  
-	add [shellproc_line_cursor], 1            ; cursor moves on one character
-	add [shellproc_line_end], 1               ; as does end of line
-	set pc, shellproc_update_screen			  ; update screen and loop
-    
-shellproc_handle_edit:
-	ifl c, 0x10								; below set of known codes?
-		set pc, shellproc_readline_loop			; ignore
-	ifg c, 0x13								; above set of known codes?
-		set pc, shellproc_readline_loop			; ignore
-	set pc, [c + shellproc_edit_handlers - 0x10]	; use as index into branch table
+shellproc_mainloop: 
+	jsr shellproc_scroll						; make a new line
   
-shellproc_edit_handlers:
-    dat shellproc_handle_backspace
-    dat shellproc_handle_return
-    dat shellproc_handle_insert
-    dat shellproc_handle_delete
-
-shellproc_handle_backspace:
-    set x, [shellproc_line_end]
-    set i, [shellproc_line_cursor]
-    ife i, shellproc_line_buffer_memory
-		set pc, shellproc_readline_loop		; can't backspace past start of buffer!
-    set j, i
-    sub i, 1
-    set [shellproc_line_cursor], i
-1:
-    sti [i], [j]
-    ifn i, x
-        b 1b
-    set [i], 0
-    sub [shellproc_line_end], 1
-    set pc, shellproc_update_screen
-            
-shellproc_handle_insert:    
-    set pc, shellproc_readline_loop ; todo
-    
-shellproc_handle_delete:    
-    set x, [shellproc_line_end]
-    set i, [shellproc_line_cursor]
-    set j, i
-    add j, 1
-    ife j, x
-		set pc, shellproc_readline_loop		; no characters to delete!
-1:
-    sti [i], [j]
-    ifn i, x
-        b 1b
-    set [i], 0
-    sub [shellproc_line_end], 1
-    set pc, shellproc_update_screen
+	set x, [proclist]							; current process
+	set x, [x+kerntable_block_start]			; its header	
+	set x, [x+kernheader_terminal_handle] 		; its terminal descriptor
+	set x, [x+term_vram]						; start of VRAM
+	add x, (SCREEN_COLUMNS * (SHELL_ROWS-1))	; line entry will be here  
   
-shellproc_arrow_handlers:
-	dat shellproc_handle_up, shellproc_handle_down, shellproc_handle_left, shellproc_handle_right
-		
-shellproc_handle_up:
-	set [shellproc_line_cursor], shellproc_line_buffer_memory
-	set pc, shellproc_readline_loop
+	; locate our line buffer immediately after the process header
+	set y, [proclist]							; current process
+	set y, [y+kerntable_block_start]			; its header
+	add y, kernheader_size						; the header's size is the start of the line buffer
+	set z, y									; also end of used area
+	set i, y									; initial cursor posn
+	set j, y									; calculate end of usable area
+	add j, (SCREEN_COLUMNS-1)					; last usable word
+  
+	jsr term_readline		; get a line of input
 	
-shellproc_handle_down:
-	set [shellproc_line_cursor], [shellproc_line_end]
-	sub [shellproc_line_cursor], 1
-	set pc, shellproc_readline_loop
-	
-shellproc_handle_left:
-	ifn [shellproc_line_cursor], shellproc_line_buffer_memory
-		sub [shellproc_line_cursor], 1
-	set pc, shellproc_readline_loop
-	
-shellproc_handle_right:
-	add [shellproc_line_cursor], 1
-	ife [shellproc_line_cursor], [shellproc_line_end]
-		sub [shellproc_line_cursor], 1		
-	set pc, shellproc_readline_loop
-  	
-shellproc_handle_return:
-	; todo
-	set pc, shellproc_entry				; reenter shell, triggering scroll and buffer reset
-	
-; ------------------------------------------------------------------------
-  		  		
-	RESERVE_WORDS( 0x20 )	; stack space
-shellproc_sp:
-	dat shellproc_entry
-	
-shellproc_table:
-	dat shellproc_table		; next
-	dat shellproc_table		; prev
-	dat shellproc_header	; block start
-	dat shellproc_sp		; sp
-.org shellproc_table + kerntable_size
+	set [z], 0	; z = EOL; null terminate
+	; y now points to the null-terminated result
+	set i, y
+	set j, x
+	set C, 0x7000
+	jsr strcpy
+	add x, SCREEN_COLUMNS
+	ifn j, x
+		set pc, shellproc_clear_j_to_x	
+	set pc, shellproc_mainloop

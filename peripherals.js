@@ -844,6 +844,24 @@ Peripherals.push(function( _debugCommands )
             }
             
             return 0;      
+        },
+        
+        hwReset: function()
+        {
+		    media = null;
+		    message = 0xFFFF;
+		    pendingOp = null;
+		    sector_size = 512;
+		    flags = 0;
+		    lastInterrupt = 0;
+		    lastInterruptError = 0;
+		    
+		    curr_sector = 0;
+		    sectors_per_track = 18;
+		    tracks = 80;
+		    full_stroke_ms = 200;
+		    sector_access_ms = 11;
+		    cycles_per_ms = 100;
         }
     };
 

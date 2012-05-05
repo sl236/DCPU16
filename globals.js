@@ -31,8 +31,8 @@ var Emulator =
     InterruptQueueEnable: 0,
     EventQueue: [],
     MemoryHooks: [],
-    BackTrace: null,
-    JSRHistory: null,
+    BackTrace: [],
+    JSRHistory: [],
     BackTraceMax: 32,
     JSRHistoryMax: 256
 };

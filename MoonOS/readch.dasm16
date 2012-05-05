@@ -8,30 +8,50 @@ readch_impl:
     set push, A
     set push, B
 
+    set a, [proclist]						; current process
+	set a, [a+kerntable_block_start]		; its header	
+	set a, [a+kernheader_terminal_handle] 	; its terminal descriptor    
+    ifn a, 0								; we must have a terminal and it must be current
+	    ife a, [screen_curr_terminal]
+	    	set pc, readch_reentry
+
+	; if we have no terminal, we cannot read the keyboard
+	set c, 0			; no character
+	set b, pop			; restore regs and stack
+	set a, pop
+	ife b, 0			; if nonblocking, just return
+		set pc, pop
+	jsr TaskSwitch		; give other things a chance to run
+	set pc, readch_impl	; loop in the hope we get handed a terminal
+	
+
 readch_reentry:    
-    set A, 1
-	set C, 0		
-	ifn [keyboard_device_id], 0xffff
+    set A, 1							; read a key
+	set C, 0							; no key if no keyboard
+	ifn [keyboard_device_id], 0xffff	; if we have a keyboard device, use it
 		hwi [keyboard_device_id]
 	set B, pop
 	set A, pop
-	ife B, 0
-	    set pc, pop	    
-	ifn C, 0
+	ife B, 0							; nonblocking form, just return whatever
+	    set pc, pop
+	ifn C, 0							; got a key, return
 	    set pc, pop
 	    
-    set push, A
+    set push, A							; blocking form and no key
     set push, B
-	ifn [keyboard_wait_proc], 0
+    
+    set x, [proclist]						; current process
+	set y, [x+kerntable_block_start]		; its header	
+	set y, [y+kernheader_terminal_handle] 	; its terminal descriptor    
+	ifn [y+term_waiting_keyproc], 0			; already something waiting? (how?)
 		b 1f		
 	
-	iaq 1
-	set x, [proclist]
-	set [proclist], [x]
-	set [keyboard_wait_proc], x
-	jsr dll_delete
-	set push, readch_reentry
-	set [x+kerntable_saved_sp], sp
+	iaq 1								; critical section
+	set [proclist], [x]					; next process now current
+	set [y+term_waiting_keyproc], x		; we're waiting for a keypress
+	jsr dll_delete						; so not in the active process queue
+	set push, readch_reentry			; we come back to the reentry point when we get woken up
+	set [x+kerntable_saved_sp], sp		; 
 	set x, [proclist]
 	set sp, [x+kerntable_saved_sp]
 	iaq 0
@@ -40,3 +60,193 @@ readch_reentry:
 1:
 	jsr TaskSwitch
 	set pc, readch_reentry
+
+
+; -------------------------------------------------
+; ReadLine
+;
+; x: VRAM line
+; y: input buffer address of start
+; z: input buffer address of current EOL
+; i: input buffer address of end of usable area
+; j: initial cursor address (y <= j < z)
+;
+; line editing facility for the input buffer content is provided
+; needs ~24 words of stack!
+; returns to caller when return is pressed; registers above updated with appropriate values; abc preserved
+; -------------------------------------------------
+
+def term_readln_terminal	5
+def term_readln_vram		4
+def term_readln_start 		3
+def term_readln_eol			2
+def term_readln_cursor 		1
+def term_readln_end			0
+
+term_readline:
+  set push, a	; (caller regs)
+  set push, b	; (caller regs)
+  set push, c	; (caller regs)
+  
+  set c, [proclist]						; current process
+  set c, [c+kerntable_block_start]		; its header	
+  set c, [c+kernheader_terminal_handle] ; its terminal descriptor
+  set push, c
+  
+  set push, x	; sp+term_readln_vram
+  set push, y	; sp+term_readln_start
+  set push, z	; sp+term_readln_eol
+  set push, i	; sp+term_readln_cursor
+  set push, j	; sp+term_readln_end
+  
+
+trl_update_screen:        
+  set i, [sp+term_readln_start]     		; update display: from buffer memory
+  set j, [sp+term_readln_vram]		        ; to VRAM...
+  set x, j									; (also find end of line
+  add x, SCREEN_COLUMNS						;  while we have the value around)
+  set c, SHELL_COLOUR                       ; ...using the shell colour
+
+  set b, [sp+term_readln_eol]				; EOL
+  ife i, b									; empty line?
+  	b 2f									; skip displaying it
+1:
+  set a, [i]								; fetch character
+  bor a, c									; colour it
+  sti [j], a  								; store and increment
+  set a, [i]    							; next character
+  ifn i, b									; EOL?
+    b 1b									; go around
+2:
+  sti [j], 0								; clear rest of line
+  ifn j, x									; at end of line?
+    b 2b									; go around
+
+trl_readline_loop:
+	set a, [sp+term_readln_vram] 		    ; calc cursor posn
+	add a, [sp+term_readln_cursor]			; it's (vram + cursor ptr) - start ptr
+	sub a, [sp+term_readln_start]
+	set b, [sp+term_readln_terminal]
+	set [b+term_cursor_ptr], a				; store cursor posn
+	set [b+term_cursor_mask], CURSOR_MASK	; enable cursor
+	set [b+term_cursor_tick], 0				; display immediately
+	
+	jsr TaskSwitch						; give others a chance to run
+	
+	set b, 1							; using the blocking form
+	jsr ReadChar						; fetch next char
+	
+	set z, [sp+term_readln_cursor]		; address of insertion point in buffer
+	set z, [z]							; character at insertion point
+	ifn [sp+term_readln_cursor], [sp+term_readln_eol] 	; if not at eol
+		bor z, SHELL_COLOUR				; use shell colour
+	set b, [sp+term_readln_terminal]
+	set x, [b+term_cursor_ptr]			; current cursor address
+	set [x], z							; update VRAM, hiding cursor if present	
+	set [b+term_cursor_mask], 0			; ensure it's not made visible partway through editing
+	  
+	ifl C, 0x1e     		            ; editing char?
+		set pc, trl_handle_edit  		; handle that
+	ifg c, 0x83							; above set of known codes?
+		set pc, trl_readline_loop		; ignore
+	ifg C, 0x7f							; arrow?
+		set pc, [c + trl_arrow_handlers - 0x80]	; handle that
+
+	; insert regular character
+	set i, [sp+term_readln_eol]				; current end of line
+	ife i, [sp+term_readln_end]				; out of memory?
+		set pc, trl_readline_loop			; ignore the character
+
+	set x, [sp+term_readln_cursor]			; current cursor pos
+	set j, i								; line end
+	add i, 1								; we're adding a character
+1:
+	std [i], [j]                            ; shuffle characters up
+	ifn i, x                                ; at cursor position?
+		b 1b                                ; no, keep shuffling
+
+	set [x], c                              ; new character goes here  
+	add [sp+term_readln_cursor], 1          ; cursor moves on one character
+	add [sp+term_readln_eol], 1             ; as does end of line
+	set pc, trl_update_screen			  	; update screen and loop
+    
+trl_handle_edit:
+	ifl c, 0x10								; below set of known codes?
+		set pc, trl_readline_loop			; ignore
+	ifg c, 0x13								; above set of known codes?
+		set pc, trl_readline_loop			; ignore
+	set pc, [c + trl_edit_handlers - 0x10]	; use as index into branch table
+  
+trl_edit_handlers:
+    dat trl_handle_backspace
+    dat trl_handle_return
+    dat trl_handle_insert
+    dat trl_handle_delete
+
+trl_handle_backspace:
+    set x, [sp+term_readln_eol]
+    set i, [sp+term_readln_cursor]
+    ife i, [sp+term_readln_start]
+		set pc, trl_readline_loop			; can't backspace past start of buffer!
+    set j, i
+    sub i, 1
+    add x, 1
+    set [sp+term_readln_cursor], i
+1:
+    sti [i], [j]
+    ifn i, x
+        b 1b
+    sub [sp+term_readln_eol], 1
+    set pc, trl_update_screen
+            
+trl_handle_insert:    
+    set pc, trl_readline_loop ; todo
+    
+trl_handle_delete:    
+    set x, [sp+term_readln_eol]
+    set i, [sp+term_readln_cursor]
+    ife i, x
+		set pc, trl_readline_loop		; no characters to delete!
+    set j, i
+    add j, 1
+1:
+    sti [i], [j]
+    ifn i, x
+        b 1b
+    sub [sp+term_readln_eol], 1
+    set pc, trl_update_screen
+  
+trl_arrow_handlers:
+	dat trl_handle_up, trl_handle_down, trl_handle_left, trl_handle_right
+		
+trl_handle_up:
+	set [sp+term_readln_cursor], [sp+term_readln_start]
+	set pc, trl_readline_loop
+	
+trl_handle_down:
+	set [sp+term_readln_cursor], [sp+term_readln_eol]
+	set pc, trl_readline_loop
+	
+trl_handle_left:
+	ifn [sp+term_readln_cursor], [sp+term_readln_start]
+		sub [sp+term_readln_cursor], 1
+	set pc, trl_readline_loop
+	
+trl_handle_right:
+	ifn [sp+term_readln_cursor], [sp+term_readln_eol]
+		add [sp+term_readln_cursor], 1
+	set pc, trl_readline_loop
+  	
+trl_handle_return:
+	set j, pop
+	set i, pop
+	set z, pop
+	set y, pop
+	set x, pop
+	set c, pop	; cached terminal handle
+	set c, pop
+	set b, pop
+	set a, pop	
+	set pc, pop
+	
+; ------------------------------------------------------------------------

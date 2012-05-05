@@ -33,6 +33,7 @@ malloc:
   set [Z], C													; as does the old block's prev's next
   set [C+kerntable_block_start], [A+kerntable_block_start]		; the new block starts where the old block used to
   set [A+kerntable_block_start], B								; and that starts where the new one ends
+  sub [freemem_size], kerntable_size							; we created a new descriptor
   
 1:
   ; whatever happened, A currently holds a suitable block
@@ -83,6 +84,7 @@ free:
   set [x+kerntable_block_start], [a+kerntable_block_start]  ; the new block starts where a used to
   set x, a                ; now we can remove a from the freelist
   jsr dll_delete          ; so do that
+  add [freemem_size], kerntable_size	; we freed a block descriptor
   set x, c                ; put x back for next operation
     
 1:
@@ -92,6 +94,7 @@ free:
   
   set [y+kerntable_block_start], [x+kerntable_block_start]  ; Y now starts where X used to
   jsr dll_delete          ; and we can remove x from the list
+  add [freemem_size], kerntable_size	; we freed a block descriptor
 1:    
 
   set y, pop

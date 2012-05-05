@@ -3,9 +3,9 @@
 ; ------------------
 
 term_return_popxy:
-		set x, pop
-		set y, pop
-		set pc, pop
+	set x, pop
+	set y, pop
+	set pc, pop
 
 ; rotate left through VTs, preserving registers
 term_rotate_left:
@@ -102,18 +102,21 @@ term_alloc:
 	jsr malloc							; allocate memory for these
 	
 	set i, [x+kerntable_block_start]	; new terminal descriptor
-	set [i+term_block_handle], x		; its block handle
-	set b, i							; vram starts at i+term_desc_size
+	set b, i							; calculate vram start
 	add b, term_desc_size
-	sti [i], b	; vram					; write terminal descriptor: vram pointer, zero for the rest
-	sti [i], 0	; charmap
-	sti [i], 0  ; palette
-	sti [i], 0  ; border colour
-	sti [i], [proclist] ; owning process
-	add b, 0x180
+	sti [i], b							; record that
+1:
+	sti [i], 0							; most terminal descriptor entries start as zero
+	ifn i, b
+		b 1b
+	set i, [x+kerntable_block_start]	; get terminal descriptor handle back
+	set [i+term_owner], [proclist]		; fill the entries we can
+	set [i+term_block_handle], x
+	
+	add b, 0x180						; end of VRAM
 	ifc z, term_alloc_flag_charmap		; if we got a charmap and/or palette, calculate those addresses
 		set pc, 1f						; otherwise skip over the calculations
-	set [i-4], b
+	set [i+term_charmap], b
 	set a, LEM1802_MEM_DUMP_FONT
 	hwi [screen_device_id]
 	add c, 0x100
@@ -122,12 +125,12 @@ term_alloc:
 		set pc, 1f
 	set a, LEM1802_MEM_DUMP_PALETTE
 	hwi [screen_device_id]
-	set [i-3], b
+	set [i+term_palette], b
 1:	
 	set y, [screen_curr_terminal]		; current terminal
 	ife y, 0							; if we don't have one, skip splicing
 		set pc, 1f
-	set y, [y+kerntable_block_start]	; its block handle
+	set y, [y+term_block_handle]		; its block handle
 	jsr dll_splice						; insert us just before
 1:
 	set x, [x+kerntable_block_start]	; terminal descriptor

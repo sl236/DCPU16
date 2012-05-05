@@ -7,6 +7,11 @@
 
 (function()
 {
+    function mem_write_breakpoint(_addr, _value)
+    {
+    	Console.Log("Memory breakpoint hit at " + Console.H16(_addr) + " with " + Console.H16(_value));
+    	Emulator.paused = true;
+    }
 
     // -------------
     // Debug console
@@ -57,6 +62,35 @@
               var addr = parseInt(_args.shift(), 16);
               Emulator.regs[12] = addr;
               Console.Log("Breakpoint set to " + Console.H16(Emulator.regs[12]));
+          }
+      }
+  },
+
+    mbp:
+  {
+      help: 'mbp addr\nToggles a memory write breakpoint at addr.',
+      fn: function(_args)
+      {
+          if (_args.length)
+          {
+              var addr = parseInt(_args.shift(), 16);
+              if( !Emulator.MemoryHooks[addr] || (Emulator.MemoryHooks[addr] == mem_write_breakpoint) )
+              {
+              	if( Emulator.MemoryHooks[addr] == mem_write_breakpoint )
+              	{
+              		Emulator.MemoryHooks[addr] = null;
+	            	Console.Log("Memory write breakpoint cleared at " + Console.H16(addr));
+              	}
+              	else
+              	{
+              		Emulator.MemoryHooks[addr] = mem_write_breakpoint;
+	            	Console.Log("Memory write breakpoint set at " + Console.H16(addr));
+              	}
+              }
+              else
+              {
+              	Console.Log("Could not set memory write breakpoint at " + Console.H16(addr) + ", address in use by memory mapped hardware.");
+              }
           }
       }
   },
