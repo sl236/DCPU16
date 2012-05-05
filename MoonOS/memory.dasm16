@@ -1,6 +1,6 @@
 ; ----- malloc
 ; ----- allocate X words of memory; returns block table ptr in X
-def align 16
+def min_block_size 0x80
 malloc:
   set push, a
   set push, b
@@ -9,9 +9,9 @@ malloc:
   set A, freelist         ; freelist head
 
 1:
-  set A, [A]              ; next block
-  ife A, freelist         ; if we're back at the head
-    set pc, out_of_memory ; then not much we can do
+  set A, [A + kerntable_prev] 	; prev block (allocations happen from top of memory, so this makes us walk more of the fragments)
+  ife A, freelist         		; if we're back at the head
+    set pc, out_of_memory 		; then not much we can do
   set B, A                ; grab a copy
   sub B, [A + kerntable_block_start]  ; work out how big the block is
   ifg X, B                ; if we need more memory
@@ -21,9 +21,9 @@ malloc:
   sub C, X                ; so this is always >=0
   set B, A                ; block start
   sub B, X                ; new process wants to start here    
-  ifg (align+4), C        ; block too small to split?
+  ifg min_block_size, C   ; block too small to split?
     b 1f                  ; give the caller the whole thing
-  
+
   set C, B                      ; new block start
   sub C, kerntable_size         ; new free block can live here
   set [C], A													; block detached: its next points to the old block
@@ -41,8 +41,8 @@ malloc:
   set X, [A+kerntable_block_start]	; start
   sub X, A					; negative size
   add [freemem_size], X		; add to running free memory total
-  set X, A            ; copy block start to X
-  jsr dll_delete      ; remove it from the freelist
+  set X, A            		; copy block handle to X
+  jsr dll_delete      		; remove it from the freelist
   set z, pop
   set c, pop
   set b, pop
@@ -69,16 +69,16 @@ free:
   ifg x, y            ; if's still before X
     b 1b              ; keep looking
 1:  
-  jsr dll_splice      ; insert x just before y (returns y's prev in a)
+  jsr dll_splice      ; insert x just before y; returns y's prev in a
     
-  ; if prev+kerntable_size == x, we should coalesce them
+  ; if prev+kerntable_size == x's start, we should coalesce them
   ; likewise if x+kerntable_size == y, we should coalesce those
   
   set c, x                	; take a copy of x
   set b, a                	; copy a
   add b, kerntable_size   	; add kerntable_size
-  ifn b, x                	; if it's not equal to x
-    b 1f                  	; don't coalesce
+  ifn b, [x+kerntable_block_start] 	; if it's not equal to x
+    b 1f                  			; don't coalesce
   
   set [x+kerntable_block_start], [a+kerntable_block_start]  ; the new block starts where a used to
   set x, a                ; now we can remove a from the freelist
@@ -91,9 +91,9 @@ free:
   ifn c, [y+kerntable_block_start]	; if that's not where y starts
     b 1f							; don't coalesce
   
-  set [y+kerntable_block_start], [x+kerntable_block_start]  ; Y now starts where X used to
-  jsr dll_delete          ; and we can remove x from the list
-  add [freemem_size], kerntable_size	; we freed a block descriptor
+  set [y+kerntable_block_start], [x+kerntable_block_start]	; Y now starts where X used to
+  jsr dll_delete											; and we can remove x from the list
+  add [freemem_size], kerntable_size						; we freed a block descriptor
 1:    
 
   set y, pop

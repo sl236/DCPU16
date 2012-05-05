@@ -23,9 +23,10 @@ exit_impl:
 ; ----- Execution will resume in old process space for both processes, however the new process' SP will point to the new stack
 
 fork_impl:
+  add X, kernheader_size		; caller shouldn't need to take our headers into account
   set A, [proclist]       		; current process' table
   sub A, SP               		; area required for current stack
-  add A, 0x20+kernheader_size	; ensure space for ISRs, kernel calls, process header
+  add A, 0x20					; ensure some minimal space for ISRs, kernel calls etc
   ifg A, X                		; if the result is more than caller asked for
     set X, A              		; use that instead
 

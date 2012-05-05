@@ -31,7 +31,7 @@ idleproc_entry:
 	set i, [screen_curr_terminal]	; terminal handle
 	ife i, 0						; if we don't have a terminal
 		set pc, TaskSwitch			; nothing more to do here
-	
+			
 	set A, [clock_time]				; blink cursor: get the time
 	set B, A						; copy it
 	and B, CURSOR_BLINK_TIME_MASK	; mask with blink rate mask
@@ -122,7 +122,7 @@ ich_table:
 1:	dat 'n', 'n', 0, spawn_new_shell
 
 spawn_new_shell:
-	set x, SCREEN_COLUMNS + 0x20 + kernheader_size	; line buffer, decent stack and the process header
+	set x, SCREEN_COLUMNS + 0x20	; line buffer and a decent stack
   	set push, [proclist]			; push current process handle
   	jsr Fork						; create a process
   	ifn [proclist], pop				; are we the original process?    
