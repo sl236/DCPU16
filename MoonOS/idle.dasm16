@@ -1,14 +1,21 @@
 ; ------------------
 ; idle process
 ; ------------------
+; this is responsible for displaying the status line,
+; resetting the watchdog timer, responding to ctrl+key combinations
+; 
+
 idleproc_header:
 	dat 0						; terminal handle
 	dat 0						; message handler
-	dat 0						; identifier
+	dat idleproc_identifier		; identifier
 	dat 0						; entrypoint
 
 	.org idleproc_header + kernheader_size
-	
+
+idleproc_identifier:
+	dat "<kernel>", 0
+
 idleproc_entry:
 	set push, idleproc_entry		; reschedule our entrypoint
 	
@@ -33,46 +40,69 @@ idleproc_entry:
 		xor [C], [i+term_cursor_mask]	; blink the cursor
 	set [i+term_cursor_tick], B		; update blink time
 	
-	; update status line
-	set A, [clock_time+1]			; top word of clock
-	set B, idleproc_statusline		; start of status line
-	set C, 0						; no colour yet, we add that later
-	jsr format_hex					; 
-	set A, [clock_time]				; bottom word of clock
-	add B, 5						; skip the colon
-	jsr format_hex					;
-	set A, [freemem_size]			; free memory size
-	add B, 5						; skip the space
-	jsr format_hex					;
-			
-	set j, idleproc_statusline + 0x10
-	set b, idleproc_statusline + 0x20
-	set i, [i+term_owner]			; current terminal's owning process
-	set i, [i+kerntable_block_start]; its header
-	set i, [i+kernheader_identifier]; identifier
-1:
-	ife [i], 0
-		b 2f
-	sti [j], [i]
-	ifn j, b
-		b 1b
-2:
-	sti [j], ' '
-	ifn j, b
-		b 2b
-	
-	set i, idleproc_statusline		; from start of status
+	; update status line	
     set j, [screen_curr_terminal]
-   	set j, [j+kernheader_terminal_handle]	; to start of vram
+   	set j, [j+kernheader_terminal_handle]	; start of vram
 	add J, 32*STATUS_ROW			; plus the status row offset
 	set C, 0x2000					; orring in a colour
 	ifn [ctrl_held], 0				; which is different if CTRL is being held
 		xor C, 0x2B00				;
-	jsr strcpy						; copy
+
+; status line layout	
+; 0123456789ABCDEF0123456789ABCDEF
+; AAAA BBBB  CCCC:DDDDDDDDDDDDDDDD
+; A == clock
+; B == free memory
+; C == current terminal owning process handle
+; D == current terminal owning process identifier
+
+	set x, c						; colour
+	bor x, ' '						; coloured blank space
+
+	set b, j
+	set a, [clock_time]				; bottom word of clock
+	jsr format_hex
+	set [b+4], x					; blank space
 	
+	set a, [freemem_size]			; free memory size
+	add b, 5						; skip the space
+	jsr format_hex					;
+	set [b+4], x					; two blank spaces
+	set [b+5], x
+	
+	set a, [i+term_owner]			; current terminal's owning process
+	add b, 6
+	jsr format_hex
+	set [b+4], c					; dividing colon
+	bor [b+4], ':'
+			
+	set i, [i+term_owner]			; current terminal's owning process
+	set i, [i+kerntable_block_start]; its header
+	set i, [i+kernheader_identifier]; identifier
+	set j, b
+	add j, 5						; start of identifier space
+	add b, 5+0xF					; end of identifier space
+1:
+	ife [i], 0						; null terminator?
+		b 2f						; skip ahead
+	set z, [i]						; get character
+	bor z, c						; colour it
+	sti [j], z						; store it	
+	ifn j, b						; reached the end?
+		b 1b						; go around
+2:
+	ife j, b						; end of available space?
+		set pc, TaskSwitch			; don't blank-fill it then
+2:
+	sti [j], x						; store coloured blank space
+	ifn j, b						; reached the end?
+		b 2b						; go around
 	set pc, TaskSwitch				; done
+
 		
-ich_find_handler:	; -- loop through control key combo handler blocks, branch to first matching handler or just return if none match
+
+; -- loop through control key combo handler blocks, branch to first matching handler or just return if none match
+ich_find_handler:	
 	ife x, 0				; hit the end?
 		set pc, pop			; no handler found	
 	ifl a, [x]				; smaller than first character?
@@ -99,11 +129,6 @@ spawn_new_shell:
   		set pc, shellproc_entry		; the child gets the shell
   	set pc, pop						; the parent returns
 	
-
-idleproc_statusline:
-	;	 0123456789ABCDEF0123456789ABCDEF
-	dat	"0123:4567 0000 |                ", 0
-		
 	RESERVE_WORDS( 0x20 )	; stack space
 	
 idleproc_sp:

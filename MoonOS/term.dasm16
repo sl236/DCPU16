@@ -82,6 +82,7 @@ term_release:
 		hwi [screen_device_id]
 	
 	set x, [y+term_block_handle]			; get the memory block handle
+	jsr dll_delete							; remove it from the terminal list
 	set pc, free							; release it, then we're done
 
 ; Allocate a terminal for the current process. Trashes registers.

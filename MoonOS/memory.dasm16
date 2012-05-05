@@ -68,18 +68,17 @@ free:
     b 1f              ; then X should be last in the list; bail
   ifg x, y            ; if's still before X
     b 1b              ; keep looking
-1:
-
-  jsr dll_splice      ; insert X here
+1:  
+  jsr dll_splice      ; insert x just before y (returns y's prev in a)
+    
+  ; if prev+kerntable_size == x, we should coalesce them
+  ; likewise if x+kerntable_size == y, we should coalesce those
   
-  ; if a+kerntable_size == x, we should coalesce them
-  ; likewise if x+kerntable_size == Y, we should coalesce those
-
-  set c, x                ; take a copy of x
-  set b, a                ; copy a
-  add b, kerntable_size   ; add kerntable_size
-  ifn b, x                ; if it's not equal to x
-    b 1f                  ; don't coalesce
+  set c, x                	; take a copy of x
+  set b, a                	; copy a
+  add b, kerntable_size   	; add kerntable_size
+  ifn b, x                	; if it's not equal to x
+    b 1f                  	; don't coalesce
   
   set [x+kerntable_block_start], [a+kerntable_block_start]  ; the new block starts where a used to
   set x, a                ; now we can remove a from the freelist
@@ -88,9 +87,9 @@ free:
   set x, c                ; put x back for next operation
     
 1:
-  add c, kerntable_size   ; c still holds a copy of x
-  ifn c, y                ; if that's not equal to y
-    b 1f                  ; don't coalesce
+  add c, kerntable_size				; c still holds a copy of x
+  ifn c, [y+kerntable_block_start]	; if that's not where y starts
+    b 1f							; don't coalesce
   
   set [y+kerntable_block_start], [x+kerntable_block_start]  ; Y now starts where X used to
   jsr dll_delete          ; and we can remove x from the list
