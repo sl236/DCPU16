@@ -133,7 +133,7 @@ shellproc_mainloop:
 		  
 	jsr term_readline		; get a line of input
 	
-	; y..z is result	
+	; y..z is result
 	set x, y			; need that in x..y
 	set y, z
 	set c, 0x7000		; turn it grey, print and scroll up
@@ -184,6 +184,60 @@ hello_message_len:	dat hello_message_len - hello_message
 ; ---- builtins
 shellproc_verb_list:
 	dat 1f	
+
+; -- ps
+1:  dat 1f, 2f, "ps", 0
+2:  set z, [proclist]
+	
+	set x, 4f
+	set y, 4f + 32
+	set c, 0x7000
+	jsr shellproc_println
+	
+	set x, [sp+shell_input_line_buffer+2]
+			
+3:	
+	set c, 0
+	set b, x
+	set a, z
+	jsr format_hex
+	set [b+4], ':'
+	set [b+5], 0x20	
+	add b, 6
+	
+	set a, z
+	sub a, [z+kerntable_block_start]	
+	jsr format_hex
+	set [b+4], 0x20
+	add b, 5
+	
+	set [b+0], '-'
+	set [b+1], '-'
+	set [b+2], '-'
+	set [b+3], '-'
+	set [b+4], 0x20
+	add b, 5
+	
+	set i, [z+kerntable_block_start]
+	set i, [i+kernheader_identifier]
+	ife i, 0
+		set i, 5f
+	set j, b
+	jsr strcpy
+	set y, j
+	set c, 0x7000
+	jsr shellproc_println
+	set push, z
+	jsr TaskSwitch
+	set z, pop
+	set z, [z]
+	ifn z, [proclist]
+		set pc, 3b
+	set pc, pop		
+
+		;0123456789abcdef0123456789abcdef
+4:	dat "proc  size ---- identifier      ";
+5:  dat "<???>", 0
 
 ; -- freelist
 1:  dat 1f, 2f, "freelist", 0
@@ -236,6 +290,9 @@ shellproc_verb_list:
 	set y, b
 	set c, 0x7000
 	jsr shellproc_println
+	set push, z
+	jsr TaskSwitch
+	set z, pop
 	set z, [z]
 	ifn z, freelist
 		set pc, 3b
