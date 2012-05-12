@@ -25,16 +25,28 @@ init:
 	set x, [x]
 	ifn x, freelist
 		b 1b
+	
+	; -- FDD op table
+	set a, fdd_op_freelist+1										; freelist start
+	set b, fdd_op_freelist+1+io_op_descriptor_size					; second element
+	set c, fdd_op_freelist+1+(io_op_descriptor_size*FDD_MAX_OPS)	; end
+1:
+	set [a+io_op_next], b			; current's next
+	add a, io_op_descriptor_size	; advance
+	add b, io_op_descriptor_size
+	ifn b, c						; at end?
+		b 1b						; go around
+	set [a+io_op_next], 0			; last element
   
 	; -- Device enumeration
-  set i, 0						; running device count
-  hwn j							; total number of devices
+ 	set i, 0						; running device count
+ 	hwn j							; total number of devices
    
 init_hw:
-	ife i, j					; enumerated everything?
-		set pc, init_hw_end		; bail
+	ife i, j						; enumerated everything?
+		set pc, init_hw_end			; bail
 	
-	hwq i						; fetch device params into a+b, c, x+y
+	hwq i							; fetch device params into a+b, c, x+y
 	
 	; LEM1802 Low Energy Monitor - http://dcpu.com/highnerd/rc_1/lem1802.txt
 	ife b, 0x7349
@@ -51,15 +63,22 @@ init_hw:
 	ife a, 0xb402
 		set pc, init_hw_generic_clock
 
+	; HMD2043 floppy drive - https://gist.github.com/2495578
+	ife b, 0x74fa
+	ife a, 0x4cae
+		set pc, init_hw_hmd2043
+
 init_hw_next:
 	add i, 1							; next device ID
 	set pc, init_hw						; go around
+
 
 init_hw_lem1802:
 	ifn [screen_device_id], 0xffff		; already got one?
 		set pc, init_hw_next			; can only deal with one right now
 	set [screen_device_id], i			; store the device ID	
 	set pc, init_hw_next				; done
+
 
 init_hw_generic_keyboard:
 	ifn [keyboard_device_id], 0xffff	; already got one?
@@ -69,6 +88,7 @@ init_hw_generic_keyboard:
 	set b, isr_handle_keyboard			; handler address as the message
 	hwi i								; send that
 	set pc, init_hw_next				; done
+
 
 init_hw_generic_clock:
 	ifn [clock_device_id], 0xffff	; already got one?
@@ -81,7 +101,28 @@ init_hw_generic_clock:
 	set b, isr_handle_clock			; handler address as the message
 	hwi i							; send that	
 	set pc, init_hw_next			; done
-		
+
+
+init_hw_hmd2043:	
+	ife [fdd_device_count], FDD_MAX_DEVICES	; already got the maximum?
+		set pc, init_hw_next				; ignore this one
+	set x, [fdd_device_count]			; fetch count
+	add [fdd_device_count], 1			; count this device
+	set [fdd_device_id+x], i			; store the device ID
+	set [fdd_device_read_op+x], hmd2043_read_sector
+	set [fdd_device_write_op+x], hmd2043_write_sector
+	set a, 5							; SET_INTERRUPT_MESSAGE
+	set b, isr_handle_hmd2043			; fdd interrupt handler
+	add b, x							; offset into trampoline so the handler knows which device the interrupt is for
+	hwi i								; send that
+	set a, 3							; UPDATE_DEVICE_FLAGS
+	set b, 3							; nonblocking, receive status interrupts
+	hwi i								; send that
+	set a, 0							; QUERY_MEDIA_PRESENT
+	hwi i								; send that	
+	set [fdd_media_present+x], b		; store result	
+	set pc, init_hw_next				; done
+			
 init_hw_end:
 	; -- done initialising devices
 	ife [screen_device_id], 0xffff  	; do we have a screen?

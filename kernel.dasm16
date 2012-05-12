@@ -7,6 +7,17 @@
 def Exit			    0x00	; exit current process
 def Fork			    0x02	; spawn a new process
 def ReadChar		    0x04	; line input to be written in terms of this, its code held in the process that uses it
+; candidates for exposing:
+; malloc
+; free
+; rpccall
+; rpcwait
+; term_alloc
+; term_release
+; term_println
+; fdd_read_sector
+; fdd_write_sector
+
 ;
 def TaskSwitch			0x1f
 
@@ -23,6 +34,7 @@ def TaskSwitch			0x1f
 .include "MoonOS/crash.dasm16"
 .include "MoonOS/globals.dasm16"
 .include "MoonOS/readch.dasm16"
+.include "MoonOS/fdd.dasm16"
 .include "MoonOS/term.dasm16"
 .include "MoonOS/shell.dasm16"
 .include "MoonOS/logger.dasm16"

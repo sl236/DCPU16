@@ -3,7 +3,7 @@
 ; ------------------------------
 ; ----- Public API entrypoints
 .org 0
-  set pc, init					  ; 0x00 exit_impl		
+  set pc, init					; 0x00 exit_impl		
   set pc, fork_impl				; 0x02
   set pc, readch_impl			; 0x04
 

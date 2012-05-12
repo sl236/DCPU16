@@ -17,6 +17,21 @@ idleproc_identifier:
 
 idleproc_entry:
 	set push, idleproc_entry		; reschedule our entrypoint
+
+1:
+	iaq 1									; critical section
+	set a, [fdd_completed_ops]				; completed op list head
+	ife a, 0								; exists?
+		b 1f								; bail
+	set [fdd_completed_ops], [a+io_op_next]	; head now head's next
+	set x, [a+io_op_process]				; wake the process
+	set y, [proclist]
+	jsr dll_splice
+	iaq 0									; end critical section
+	b 1b									; next op
+	
+1:
+	iaq 0									; end critical section
 	
 	set a, [ctrl_keypress]			; check for ctrl+key combo
 	ife a, 0						; got one?

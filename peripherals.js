@@ -664,7 +664,7 @@ Peripherals.push(function( _debugCommands )
                 {
                     for( var i = 0; i < size; i++ )
                     {
-                        Emulator.WriteMem( _X+i, media[source+i] );
+                        Emulator.WriteMem( ((_X+i)>>>0)&0xFFFF, media[source+i] );
                     }
                     curr_sector = _B + _C - 1;
                 }
@@ -694,7 +694,7 @@ Peripherals.push(function( _debugCommands )
                 {
                     for(var i=0;i<size;i++)
                     {
-                        media[source+i] = Emulator.mem[_X+i];
+                        media[source+i] = Emulator.mem[(_X+i)&0xFFFF];
                     }
                     curr_sector = _B + _C - 1;
                 }
@@ -720,6 +720,7 @@ Peripherals.push(function( _debugCommands )
             lastInterrupt=1;        // MEDIA_STATUS
             Emulator.InterruptQueue.push({ Message: message });                 
         }
+		Console.Log("Floppy inserted, " + ((((media.length) & ~(sector_size-1))>>>0)&0xFFFF) + " " + sector_size + "-word sectors.");
     }
     
     function ejectFloppy()
@@ -730,6 +731,7 @@ Peripherals.push(function( _debugCommands )
             lastInterrupt=1;        // MEDIA_STATUS
             Emulator.InterruptQueue.push({ Message: message });
         }
+        Console.Log("Floppy ejected.");
     }
     
     var deviceDesc = // https://gist.github.com/2495578
@@ -780,8 +782,6 @@ Peripherals.push(function( _debugCommands )
                     break;
                     
                 case 0x10: // READ_SECTORS
-                    if(media)
-                    {
                         if(!pendingOp)
                         {
                             if(flags&(1<<0)) // Non-blocking?
@@ -802,24 +802,24 @@ Peripherals.push(function( _debugCommands )
                             }
                             else
                             {
-                                Emulator.regs[0]=readSectors(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
-                                return Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3])*cycles_per_ms);
+			                    if(media)
+			                    {
+	                                Emulator.regs[0]=readSectors(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
+    	                            return Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3])*cycles_per_ms);
+			                    }
+			                    else
+			                    {
+			                        Emulator.regs[0]=1; // ERROR_NO_MEDIA
+			                    }
                             }
                         }
                         else
                         {
                             Emulator.regs[0]=3; // ERROR_PENDING
                         }
-                    }
-                    else
-                    {
-                        Emulator.regs[0]=1; // ERROR_NO_MEDIA
-                    }
                     break;
                     
                 case 0x11: // WRITE_SECTORS
-                    if(media)
-                    {
                         if(!pendingOp)
                         {
                             if(flags&(1<<0)) // Non-blocking?
@@ -840,19 +840,21 @@ Peripherals.push(function( _debugCommands )
                             }
                             else
                             {
-                                Emulator.regs[0]=writeSectors(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
-                                return Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3])*cycles_per_ms);
+        			            if(media)
+                   				{
+	                                Emulator.regs[0]=writeSectors(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3]);
+    	                            return Math.floor(calculateAccessTime(Emulator.regs[1],Emulator.regs[2],Emulator.regs[3])*cycles_per_ms);
+			                    }
+			                    else
+			                    {
+			                        Emulator.regs[0]=1; // ERROR_NO_MEDIA
+			                    }
                             }
                         }
                         else
                         {
                             Emulator.regs[0]=3; // ERROR_PENDING
                         }
-                    }
-                    else
-                    {
-                        Emulator.regs[0]=1; // ERROR_NO_MEDIA
-                    }
                     break;
                 
                 case 0xFFFF: // QUERY_MEDIA_QUALITY
@@ -893,7 +895,7 @@ Peripherals.push(function( _debugCommands )
     _debugCommands.floppy=
     {
         help: 'floppy [image.b64]\nLoads a base 64 encoded floppy image into emulated drive. With no arguments, produces a base64 image of current floppy contents.',
-        fn: function()
+        fn: function( _args )
         {
             if(_args.length)
             {                
@@ -907,7 +909,8 @@ Peripherals.push(function( _debugCommands )
                             ejectFloppy();
                         }
                         
-                        media = Emulator.DecodeB64Image(data); 
+                        insertFloppy(data);
+                        
                     }
                 );
             }

@@ -247,4 +247,51 @@ shellproc_verb_list:
 	set y, hello_message_end
 	set c, 0x2C80
 	jsr term_println
-	set pc, pop
+	set x, 0x240
+  	set push, [proclist]			; push current process handle
+  	jsr Fork						; create a process
+  	ife [proclist], pop				; are we the original process?    		
+		set pc, pop
+		
+	; FDD test
+	; a - initial sector; b - sector count; c - destination in memory; x - target device (0..3)
+	set a, 0
+	set b, 1
+	set c, [proclist]
+	set c, [c+kerntable_block_start]
+	add c, kernheader_size
+	set push, c
+	set x, 0
+	jsr fdd_read_impl
+	set c, 0
+	set b, 3f
+	jsr format_hex
+	set b, 2f
+	set c, 4f
+	ifn a, 0
+		b 1f
+	set b, pop
+	set c, b
+	add c, 16
+	set i, c
+	set j, c
+	add j, 15
+9:
+	set a, [i-1]
+	set [j], a
+	and [j], 0x7f
+	shr a, 8
+	and a, 0x7F
+	sub j, 1
+	std [j], a
+	ifg i, b
+		b 9b
+	add c, 16
+1:
+	set a, logger_identifier
+	jsr rpccall_impl		
+	set pc, Exit
+
+2:  dat "Failed to read sector ("
+3:  dat "0000)"
+4:  

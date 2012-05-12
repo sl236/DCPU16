@@ -1,0 +1,117 @@
+; ------------------
+; fdd virtualisation API
+; ------------------
+
+; --- FDDRead
+; a - initial sector; b - sector count; c - destination in memory; x - target device (0..3)
+; this is a blocking operation
+; on return, a is 0 for success, nonzero for failure; other registers are trashed.
+fdd_read_impl:
+	ife [fdd_device_id+x], 0xffff
+		set pc, fdd_access_fail_no_device
+	set y, [fdd_device_read_op+x]
+	b fdd_access
+
+; --- FDDWrite
+; a - initial sector; b - sector count; c - source in memory; x - target device (0..3)
+; this is a blocking operation
+; on return, a is 0 for success, nonzero for failure; other registers are trashed.
+fdd_write_impl:
+	ife [fdd_device_id+x], 0xffff
+		set pc, fdd_access_fail_no_device
+	set y, [fdd_device_write_op+x]
+	; drop through
+
+; ------------------------	
+fdd_access:
+	set i, [fdd_op_freelist]			; free operation
+	ifn i, 0							; got any?
+		b 1f							; go ahead
+		
+	set push, a
+	set push, b
+	set push, c
+	set push, x
+	set push, y
+	jsr TaskSwitch
+	set y, pop
+	set x, pop
+	set c, pop
+	set b, pop
+	set a, pop
+	b fdd_access
+1:
+
+	set [fdd_op_freelist], [i]			; advance freelist
+	set [i+io_op_result], 0xffff		; reset result
+	set [i+io_op_type], y				; fill out remaining fields
+	set [i+io_op_sector_start], a
+	set [i+io_op_sector_count], b
+	set [i+io_op_ptr], c
+	set j, [proclist]					; current process
+	set [i+io_op_process], j
+	set push, i							; store io_op structure
+	set push, fdd_issue_reentry			; store reentry address
+	set [j+kerntable_saved_sp], sp		; store sp
+	
+	iaq 1						; critical section
+	ife [fdd_active_op+x], 0	; device has an active operation?
+		b 1f					; don't bother queueing
+	set [i+io_op_next], [fdd_pending_ops+x]	; old pending op head is our next
+	set [fdd_pending_ops+x], i	; this op is now pending	
+	b 2f						; skip over immediate issue code
+1:
+	set y, x					; device ID
+	set x, i					; io_op structure
+	set [fdd_active_op+y], i	; it's now the active op
+	jsr [x+io_op_type]			; issue request directly
+	ifn a, 0					; failed to issue?
+		set pc, fdd_access_fail_direct
+2:
+	set x, j						; current process
+	set j, [x]						; next process
+	set [proclist], j				; next process now active
+	jsr dll_delete					; remove current process from active list
+	set sp, [j+kerntable_saved_sp]	; restore new process SP
+	iaq 0							; end critical section
+	set pc, pop						; return to new process
+
+fdd_issue_reentry:
+	set x, pop					; io_op structure
+	set a, [x+io_op_result]		; op result code
+	set [x+io_op_next], [fdd_op_freelist]	; our next is old freelist head
+	set [fdd_op_freelist], x	; we are new freelist head
+	set pc, pop					; return to caller
+
+fdd_access_fail_no_device:
+	set a, 0xfffe
+	set pc, pop
+
+fdd_access_fail_direct:
+	iaq 0
+	set [i], [fdd_op_freelist]	; return io_op structure to freelist
+	set [fdd_op_freelist], i
+	set pc, pop
+	
+fdd_op_freelist:
+	dat fdd_op_freelist+1
+	RESERVE_WORDS( FDD_MAX_OPS * io_op_descriptor_size )
+
+; --------------------
+; HW specific routines
+; --------------------
+hmd2043_read_sector:
+	set a, 0x10						; fetch parameters
+	set b, [x+io_op_sector_start]
+	set c, [x+io_op_sector_count]
+	set x, [x+io_op_ptr]
+	hwi [fdd_device_id+y]			; issue the op
+	set pc, pop
+
+hmd2043_write_sector:
+	set a, 0x11						; fetch parameters
+	set b, [x+io_op_sector_start]
+	set c, [x+io_op_sector_count]
+	set x, [x+io_op_ptr]
+	hwi [fdd_device_id+y]			; issue the op
+	set pc, pop

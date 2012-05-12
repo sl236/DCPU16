@@ -217,4 +217,4 @@ term_println:
 	set x, pop
 	set j, pop
 	set i, pop
-	set pc, pop	
+	set pc, pop

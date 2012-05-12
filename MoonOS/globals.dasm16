@@ -21,3 +21,14 @@ clock_device_id:		dat 0xffff
 clock_time:				dat 0, 0
 ctrl_held:				dat 0
 ctrl_keypress:			dat 0
+
+def FDD_MAX_DEVICES 4
+def FDD_MAX_OPS		32
+fdd_device_count:		dat 0
+fdd_device_id:			dat 0xffff, 0xffff, 0xffff, 0xffff
+fdd_device_read_op:		dat 0, 0, 0, 0
+fdd_device_write_op:	dat 0, 0, 0, 0
+fdd_active_op:			dat 0, 0, 0, 0
+fdd_pending_ops:		dat 0, 0, 0, 0
+fdd_media_present:		dat 0, 0, 0, 0
+fdd_completed_ops:		dat 0

@@ -2,7 +2,7 @@
 ; interrupt handlers
 ; ------------------
 
-def isr_header_magic 0x3457
+def isr_header_magic 0x1ceb		; bor j, j - a no-op; this allows us to have trampolines
 isr_entry:
 	bor a, 0
 	ifn [a-1], isr_header_magic		; sanity check: does the message hold the address of an ISR?
@@ -57,5 +57,64 @@ isr_handle_clock:
 	set push, ex
 	add [clock_time], 1
 	add [clock_time+1], ex
+	set ex, pop
+	rfi 0
+
+dat isr_header_magic	; ---- HMD2043 handler
+isr_handle_hmd2043:
+	dat isr_header_magic		; support up to 4 devices
+	dat isr_header_magic
+	dat isr_header_magic
+	dat isr_header_magic
+	set push, ex
+	set push, b
+	set push, x
+	set push, y
+	sub a, isr_handle_hmd2043	; A now contains device ID 0..3
+	set y, a					; stash it
+	
+	set a, 4								; QUERY_INTERRUPT_TYPE
+	hwi [fdd_device_id+y]					; send that
+	set pc, [b+isr_handle_hmd2043_handlers]	; select appropriate handler
+
+isr_handle_hmd2043_handlers:
+	dat isr_handle_hmd2043_exit				; NONE
+	dat isr_handle_hmd2043_media			; MEDIA_STATUS
+	dat isr_handle_hmd2043_opcomplete		; READ_COMPLETE
+	dat isr_handle_hmd2043_opcomplete		; WRITE_COMPLETE
+	
+isr_handle_hmd2043_opcomplete:
+	set x, [fdd_active_op+y]				; active operation
+	ife x, 0								; exists?
+		set pc, isr_handle_hmd2043_exit		; nope. look the other way and whistle.
+	set [x+io_op_result], a					; store operation result
+	set [x+io_op_next], [fdd_completed_ops] ; about to make it new head of completed ops list	
+	set [fdd_completed_ops], x				; do that
+
+1:
+	set x, [fdd_pending_ops+y]				; pending ops list
+	set [fdd_active_op+y], x				; this op now active
+	ife x, 0								; empty?
+		set pc, isr_handle_hmd2043_exit		; bail
+	set [fdd_pending_ops+y], [x+io_op_next]	; its next is head of pending ops list
+	set push, c
+	jsr [x+io_op_type]
+	set c, pop
+	ife a, 0								; successfully issued?
+		set pc, isr_handle_hmd2043_exit		; we're done here
+	set b, a								; result code in b
+	set pc, isr_handle_hmd2043_opcomplete	; this op is complete
+	
+	
+isr_handle_hmd2043_media:
+	set a, 0								; QUERY_MEDIA_PRESENT
+	hwi [fdd_device_id+y]					; send that	
+	set [fdd_media_present+y], b			; store result
+	; drop through
+	
+isr_handle_hmd2043_exit:
+	set y, pop
+	set x, pop
+	set b, pop
 	set ex, pop
 	rfi 0
