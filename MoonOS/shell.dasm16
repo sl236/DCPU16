@@ -254,7 +254,7 @@ shellproc_verb_list:
 		set pc, pop
 		
 	; FDD test
-	; a - initial sector; b - sector count; c - destination in memory; x - target device (0..3)
+	; attempt to read the first sector, and dump the first 32 bytes to system log
 	set a, 0
 	set b, 1
 	set c, [proclist]
@@ -292,6 +292,6 @@ shellproc_verb_list:
 	jsr rpccall_impl		
 	set pc, Exit
 
-2:  dat "Failed to read sector ("
+2:  dat "Failed to read sector (error "
 3:  dat "0000)"
 4:  
