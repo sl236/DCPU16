@@ -229,11 +229,14 @@
                         break;
 
                     case 0x11: // HWQ a
-                        Emulator.regs[0] = Emulator.Devices[aval].hwType & 0xFFFF;
-                        Emulator.regs[1] = (Emulator.Devices[aval].hwType >> 16) & 0xFFFF;
-                        Emulator.regs[2] = Emulator.Devices[aval].hwRev & 0xFFFF;
-                        Emulator.regs[3] = Emulator.Devices[aval].hwManufacturer & 0xFFFF;
-                        Emulator.regs[4] = (Emulator.Devices[aval].hwManufacturer >> 16) & 0xFFFF;
+                    	if( aval < Emulator.Devices.length )
+                    	{
+                        	Emulator.regs[0] = Emulator.Devices[aval].hwType & 0xFFFF;
+                        	Emulator.regs[1] = (Emulator.Devices[aval].hwType >> 16) & 0xFFFF;
+                        	Emulator.regs[2] = Emulator.Devices[aval].hwRev & 0xFFFF;
+                        	Emulator.regs[3] = Emulator.Devices[aval].hwManufacturer & 0xFFFF;
+                        	Emulator.regs[4] = (Emulator.Devices[aval].hwManufacturer >> 16) & 0xFFFF;
+                        }
                         break;
 
                     case 0x12: // HWI a
