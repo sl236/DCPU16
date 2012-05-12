@@ -157,3 +157,64 @@ term_alloc:
 	jsr term_map_current				; map us
 	set x, idleproc_table				; idle process handle
 	set pc, taskswitch_to_process		; taskswitch over so it can populate the status line; on resume return to caller
+
+; ---- println: prints string held between x and y inclusive
+; ---- using colour in c, on last line before status line; Preserves other registers.
+term_println:
+	set push, i
+	set push, j
+	set push, x
+	set push, y
+	set push, c
+
+	; in the shell we have these values available, but let's reacalculate them so this is reusable
+	set i, [proclist]							; current process
+	set i, [i+kerntable_block_start]			; its header	
+	set i, [i+kernheader_terminal_handle] 		; its terminal descriptor
+	set i, [i+term_vram]						; start of VRAM
+  
+	set j, i
+	add j, SCREEN_COLUMNS               		; next row down
+	set x, i
+	add x, (SCREEN_COLUMNS * (STATUS_ROW-2))	; end of scroll area
+
+1:
+	sti [i], [j]  ; copy to row above
+	sti [i], [j]
+	sti [i], [j]
+	sti [i], [j]
+	sti [i], [j]
+	sti [i], [j]
+	sti [i], [j]
+	sti [i], [j]
+	ifn i, x      ; end of area?
+		b 1b        ; no, go around
+  
+	set i, x		; bottom row
+	set j, [sp+2]	; source string
+	set y, [sp+1]	; end of source string
+	ife j, y		; source empty?
+		b 2f		; skip copy
+1:
+	set c, [j]	; fetch character
+	bor c, [sp]	; colour it
+	sti [i], c	; write it
+	ifn j, y	; reached the end?
+		b 1b	; go around
+2:
+
+	add x, SCREEN_COLUMNS*2	; end of next screen line
+	ife i, x	; there?
+		b 2f	; skip
+1:
+	sti [i], 0	; clear screen
+	ifn i, x	; end of line?
+		b 1b	; loop
+2:
+
+	set c, pop
+	set y, pop
+	set x, pop
+	set j, pop
+	set i, pop
+	set pc, pop	

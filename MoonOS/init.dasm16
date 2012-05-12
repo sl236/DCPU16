@@ -84,18 +84,30 @@ init_hw_generic_clock:
 		
 init_hw_end:
 	; -- done initialising devices
-  ife [screen_device_id], 0xffff  	; do we have a screen?
-    sub pc, 1           			; if not, we don't know how to continue.
-  
-  jsr spawn_new_shell			; fork a shell
-  jsr TaskSwitch
-;  jsr spawn_new_shell			; fork another shell
-;  jsr TaskSwitch
-;  jsr term_rotate_left			; rotate terminals left
-;  jsr TaskSwitch
-  set pc, Exit            		; exit, releasing this memory to the system   
+	ife [screen_device_id], 0xffff  	; do we have a screen?
+		sub pc, 1           			; if not, we don't know how to continue.
 
-  RESERVE_WORDS( 0x20 )	; stack
+  	; fork a logger  
+	set x, SCREEN_COLUMNS + 0x20	; line buffer and a decent stack
+  	set push, [proclist]			; push current process handle
+  	jsr Fork						; create a process
+  	ifn [proclist], pop				; are we the original process?    
+  		set pc, logger_entry		; the child is the logger
+  	  	   
+	jsr spawn_new_shell				; fork a shell
+  	jsr TaskSwitch					; give those a chance to initialise
+  	
+  	set a, logger_identifier		; logger greeting message
+  	set b, init_message
+  	set c, init_message_end
+  	jsr rpccall_impl
+  	
+	set pc, Exit            		; exit, releasing this memory to the system   
+
+init_message:	dat "System log"
+init_message_end:
+
+	RESERVE_WORDS( 0x20 )	; stack
   
 initproc_table:
   dat idleproc_table    ; next

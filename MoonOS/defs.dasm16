@@ -10,14 +10,15 @@ def kerntable_saved_sp     	3
 def kerntable_size			(kerntable_saved_sp+1)
 
 def kernheader_terminal_handle	0
-def kernheader_message_handler	1
-def kernheader_identifier		2
+def kernheader_identifier		1
 def kernheader_size				( kernheader_identifier+1)
 
 ; ----- settings
 def CLOCK_TICK_RATE			15			; clock rate is (60/CLOCK_TICK_RATE) Hz
 def CURSOR_BLINK_TIME_MASK	0xFFFE		; cursor blinks when (this & time') != time
-def STATUS_ROW				10			; area above is used by the shell; below is for background processes
+def SCREEN_ROWS     		12
+def SCREEN_COLUMNS  		32
+def STATUS_ROW				11
 
 ; ----- terminal descriptor
 def term_vram				0
@@ -34,14 +35,6 @@ def term_desc_size			(term_block_handle+1)
 
 def term_alloc_flag_charmap (1<<0)
 def term_alloc_flag_palette (1<<1)
-
-
-; ----- standard messages
-def SIGENTRY				0
-def SIGINT					2
-def SIGKILL					9
-def SIGUSR1					10
-
 
 ; ----- hardware
 def LEM1802_MEM_MAP_SCREEN		0

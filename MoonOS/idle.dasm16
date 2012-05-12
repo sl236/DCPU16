@@ -7,7 +7,6 @@
 
 idleproc_header:
 	dat 0						; terminal handle
-	dat 0						; message handler
 	dat idleproc_identifier		; identifier
 	dat 0						; entrypoint
 

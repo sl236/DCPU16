@@ -1,9 +1,6 @@
 ; ------------------
 ; shell
 ; ------------------
-def SCREEN_ROWS     12
-def SCREEN_COLUMNS  32
-def SHELL_ROWS      10
 def SHELL_COLOUR    0x9000
 def CURSOR_MASK     0x9900
 
@@ -15,67 +12,6 @@ shell_greeting:
   
 shell_prompt_char: 
 	dat (0x24 | SHELL_COLOUR)
-
-; ---- println: prints string held between x and y inclusive
-; ---- using colour in c, on last line before status line; Preserves other registers.
-shellproc_println:
-	set push, i
-	set push, j
-	set push, x
-	set push, y
-	set push, c
-
-	; in the shell we have these values available, but let's reacalculate them so this is reusable
-	set i, [proclist]							; current process
-	set i, [i+kerntable_block_start]			; its header	
-	set i, [i+kernheader_terminal_handle] 		; its terminal descriptor
-	set i, [i+term_vram]						; start of VRAM
-  
-	set j, i
-	add j, SCREEN_COLUMNS               		; next row down
-	set x, i
-	add x, (SCREEN_COLUMNS * (SHELL_ROWS-2))	; end of scroll area
-
-1:
-	sti [i], [j]  ; copy to row above
-	sti [i], [j]
-	sti [i], [j]
-	sti [i], [j]
-	sti [i], [j]
-	sti [i], [j]
-	sti [i], [j]
-	sti [i], [j]
-	ifn i, x      ; end of area?
-		b 1b        ; no, go around
-  
-	set i, x		; bottom row
-	set j, [sp+2]	; source string
-	set y, [sp+1]	; end of source string
-	ife j, y		; source empty?
-		b 2f		; skip copy
-1:
-	set c, [j]	; fetch character
-	bor c, [sp]	; colour it
-	sti [i], c	; write it
-	ifn j, y	; reached the end?
-		b 1b	; go around
-2:
-
-	add x, SCREEN_COLUMNS*2	; end of next screen line
-	ife i, x	; there?
-		b 2f	; skip
-1:
-	sti [i], 0	; clear screen
-	ifn i, x	; end of line?
-		b 1b	; loop
-2:
-
-	set c, pop
-	set y, pop
-	set x, pop
-	set j, pop
-	set i, pop
-	set pc, pop	
 
 ; ---- entrypoint
 shellproc_entry:
@@ -94,7 +30,7 @@ shellproc_entry:
 	set j, [j+kernheader_terminal_handle] 		; its terminal descriptor
 	set j, [j+term_vram]						; VRAM start
 	set x, j									; grab a copy
-	add x, (SCREEN_COLUMNS * (SHELL_ROWS-1))	; end of usable area
+	add x, (SCREEN_COLUMNS * (STATUS_ROW-1))	; end of usable area
 	set c, 0x2000								; colour
 	jsr strcpy             						; copy text
 1:
@@ -107,7 +43,7 @@ shellproc_entry:
 	set x, [x+kerntable_block_start]			; its header	
 	set x, [x+kernheader_terminal_handle] 		; its terminal descriptor
 	set x, [x+term_vram]						; start of VRAM
-	add x, (SCREEN_COLUMNS * (SHELL_ROWS-1))	; line entry will always be here
+	add x, (SCREEN_COLUMNS * (STATUS_ROW-1))	; line entry will always be here
 
 												; locate our line buffer immediately after the process header
 	set y, [proclist]							; current process
@@ -137,7 +73,7 @@ shellproc_mainloop:
 	set x, y			; need that in x..y
 	set y, z
 	set c, 0x7000		; turn it grey, print and scroll up
-	jsr shellproc_println
+	jsr term_println
 
 	; null terminate the whole string
 	set [y], 0
@@ -151,7 +87,7 @@ shellproc_mainloop:
 	set x, shellproc_no_verb_match_message
 	set y, shellproc_no_verb_match_message_len ; see below
 	set c, 0x4000
-	jsr shellproc_println
+	jsr term_println
 	set pc, shellproc_mainloop
 	
 ; ---- check verb list in z against string in x..y
@@ -179,7 +115,7 @@ shellproc_no_verb_match_message:		dat "command not found"
 shellproc_no_verb_match_message_len:	dat shellproc_no_verb_match_message_len - shellproc_no_verb_match_message
 
 hello_message:		dat "hello world"
-hello_message_len:	dat hello_message_len - hello_message
+hello_message_end:
 
 ; ---- builtins
 shellproc_verb_list:
@@ -192,7 +128,7 @@ shellproc_verb_list:
 	set x, 4f
 	set y, 4f + 32
 	set c, 0x7000
-	jsr shellproc_println
+	jsr term_println
 	
 	set x, [sp+shell_input_line_buffer+2]
 			
@@ -226,7 +162,7 @@ shellproc_verb_list:
 	jsr strcpy
 	set y, j
 	set c, 0x7000
-	jsr shellproc_println
+	jsr term_println
 	set push, z
 	jsr TaskSwitch
 	set z, pop
@@ -246,7 +182,7 @@ shellproc_verb_list:
 	set x, 4f
 	set y, 4f + 32
 	set c, 0x7000
-	jsr shellproc_println
+	jsr term_println
 	
 	set x, [sp+shell_input_line_buffer+2]
 			
@@ -289,7 +225,7 @@ shellproc_verb_list:
 			
 	set y, b
 	set c, 0x7000
-	jsr shellproc_println
+	jsr term_println
 	set push, z
 	jsr TaskSwitch
 	set z, pop
@@ -308,7 +244,7 @@ shellproc_verb_list:
 ; -- hello
 1:  dat 0, 2f, "hello", 0
 2:	set x, hello_message
-	set y, hello_message_len
+	set y, hello_message_end
 	set c, 0x2C80
-	jsr shellproc_println
+	jsr term_println
 	set pc, pop

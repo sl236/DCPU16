@@ -1,0 +1,27 @@
+; ------------------
+; logger
+; ------------------
+logger_identifier:
+	dat "syslog", 0
+
+; ---- entrypoint
+logger_entry:
+	set x, [proclist]									; our process handle
+	set x, [x+kerntable_block_start]					; our header block
+	set [x+kernheader_identifier], logger_identifier	; set the process identifier
+	
+	; allocate a terminal
+	set a, 0			; no particular requirements
+	jsr term_alloc		;
+	
+	set push, 0			; initially no process is waiting for RPC to complete
+
+1:
+	set a, pop									; waiting process
+	jsr rpcwait_impl							; wake and wait for an RPC call
+	set push, a									; store source process handle
+	set x, b									; start of line
+	set y, c									; end of line
+	set c, 0x7000								; colour
+	jsr term_println							; display
+	b 1b										; loop
