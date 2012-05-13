@@ -585,11 +585,11 @@
         Assembler.MemMap = [];
 
         // so, I decided to use regular expressions to solve the problem of macro parsing...
-        var macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
+        var macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?\\s*((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
         if( window.isRhino )
         {
             // argh, looks like some kind of bug in Rhino
-            macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?((?:(?:[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
+            macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?\\s*((?:(?:[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
         }
 
         // preprocessing
