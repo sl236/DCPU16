@@ -1,0 +1,57 @@
+; ----- Filesystem API table
+; ----- for all functions, z points to FS API instance on entry
+; ----- all functions may trash any registers; they return 0 in A on success, a nonzero error code on failure.
+; ----- all functions block and do not return until the operation completes
+; ----- all counts/sizes/offsets are in words (not bytes or sectors)
+
+def fs_fopen 		0x0	; z; a..b: filepath  c: fs_open_mode  on success, returns handle in x
+def fs_fread 		0x1	; z; a: handle  b: dest address  c: word count    reads to EOF or C, returns actual word count read in x
+def fs_fwrite		0x2	; z; a: handle  b: source address  c: word count  returns word count written in X
+def fs_fseek		0x3	; z; a: handle  b: position (low)  c: position(high)  returns actual new position in X. Position is absolute offset from start of file. If greater than EOF, EOF will result.
+def fs_ftell		0x4	; z; a: handle  returns current position in b(low), file size in X (low), Y (high)
+def fs_fclose		0x5	; z; a: handle
+def fs_fflush		0x6	; z; a: handle
+def fs_destroyfs	0x7	; z
+def fs_dopendir		0x8	; z; a..b: filename	on success, returns handle in x
+def fs_dreaddir		0x9	; z; a: handle			returns next directory entry name in b..c, type in x
+def fs_dclosedir	0xA ; z; a: handle
+def fs_mount		0xB	; z; a..b - target path, c - target filesystem API block
+def fs_umount		0xC ; z; a..b - target path
+def fs_stat			0xD	; z; a..b: filepath  on success and if entry exists, returns filesize in X(low), Y(high), file type in B
+def fs_api_size		0xE
+
+def fs_impl_next	0
+def fs_impl_mount	1	; mount takes device id in a, starting sector in b, sector count in c. Returns FS API instance pointer in B and 0 in A on success, or a nonzero error code in A on failure.
+
+def fs_filetype_file	0
+def fs_filetype_dir		1
+
+def fs_open_mode_r		1
+def fs_open_mode_w	 	2
+def fs_open_mode_rw 	(fs_open_mode_r|fs_open_mode_w)
+def fs_open_mode_trunc 	4
+def fs_open_mode_create	8
+
+; -----
+mount_device:
+
+
+; ----- Filesystem implementations
+def fs_device			fs_api_size+0
+def fs_start_sector		fs_api_size+1
+def fs_sector_count		fs_api_size+2
+def fs_memory_handle	fs_api_size+3
+def fs_descriptor_size	fs_api_size+4
+
+tarfs_mount:
+	set a, 0xffff	; todo
+	set pc, pop
+	
+ramfs:
+	dat 0
+	dat ramfs_mount
+	
+ramfs_mount:
+	set a, 0xffff	; todo
+	set pc, pop
+	

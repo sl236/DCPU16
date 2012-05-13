@@ -35,6 +35,7 @@ def TaskSwitch			0x1f
 .include "MoonOS/globals.dasm16"
 .include "MoonOS/readch.dasm16"
 .include "MoonOS/fdd.dasm16"
+.include "MoonOS/fs.dasm16"
 .include "MoonOS/term.dasm16"
 .include "MoonOS/shell.dasm16"
 .include "MoonOS/logger.dasm16"

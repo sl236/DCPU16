@@ -10,7 +10,7 @@ rpchandlerlist:			dat rpchandlerlist
 						dat rpchandlerlist
 						dat rpchandlerlist_data
 
-freemem_size:	dat 0
+freemem_size:			dat 0
 
 screen_device_id:		dat 0xffff
 screen_curr_terminal:	dat 0
