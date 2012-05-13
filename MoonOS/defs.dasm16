@@ -53,3 +53,16 @@ def io_op_sector_count	4
 def io_op_ptr			5
 def io_op_process		6
 def io_op_descriptor_size (io_op_process+1)
+
+; ----- misc
+def partition_start			0
+def partition_size			1
+def partition_fs			2
+def partition_record_size	3
+def partition_magic_0		0x4D6F
+def partition_magic_1		0x6F6E
+def boot_sector_record_size ((partition_size*4)+2)	; 4 partition records and two words for partition magic. This is at the end of the sector, rest of sector is available for boot code.
+
+def fstype_unused	0		; unused partition record
+def fstype_tarfs	0x5441	; 'TA'	UStar file (read-only)
+def fstype_kernel	0x4F53	; 'OS'	OS kernel; entire partition to be loaded by bootsector code to address 0
