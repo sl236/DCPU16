@@ -1,0 +1,33 @@
+; Sample boot ROM implementation
+; Tries all devices until it finds a disk inserted into a drive and successfully reads the first sector.
+; Transfers control there.
+
+def BOOTROM_ORIGIN 		0x0000
+def BOOTSECTOR_ORIGIN	0xF000
+
+.org BOOTROM_ORIGIN
+	hwn i						; number of devices
+	set j, 0					; device index
+1:
+	hwq j						; device ID
+	ife b, 0x74fa
+	ife a, 0x4cae
+		b found_hmd2043
+2:								; reenter here
+	add j, 1					; next device
+	ife j, i					; out of devices?
+		set j, 0				; back to start
+	b 1b						; go around
+	
+found_hmd2043:
+	set a, 0					; QUERY_MEDIA_PRESENT
+	hwi j						;
+	ifn b, 1					; no disk?
+		b 2b					; bail
+	set a, 0x10					; READ_SECTORS
+	set b, 1					; one sector
+	set x, BOOTSECTOR_ORIGIN	; to bootsector origin
+	hwi j						; do that
+	ifn a, 0					; got an error?
+		b 2b					; bail
+	set pc, BOOTSECTOR_ORIGIN	; transfer control to boot sector

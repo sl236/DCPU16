@@ -1,0 +1,37 @@
+; ------------------
+; boot sector
+; ------------------
+
+; assumptions:
+; * device ID this sector was loaded from is available, and is passed in register j
+; * a partition table is held near the end of the sector (see defs.dasm16)
+; * the boot sector was loaded high enough in memory that we can load entire kernel to address 0 without overwriting bootsector code
+; * the device being used is an HMD2043 ( https://gist.github.com/2495578 ) or compatible
+
+macro PI_BRANCH( _target )
+	add pc, (_target - 998f)
+	998:
+endm
+
+.include "MoonOS/defs.dasm16"
+.org 0
+	set x, pc	; one instruction into sector
+	sub x, 1	; start of sector
+	set a, 1	; QUERY_MEDIA_PARAMETERS
+	set z, x	; copy start of sector
+	add x, b	; x = end of sector
+	sub x, boot_sector_record_size	; x = start of partition table
+
+partition_search:
+	ife [x+partition_fs], fstype_kernel
+		PI_BRANCH( found_partition )
+	add x, partition_record_size
+	PI_BRANCH( partition_search )
+
+found_partition:
+	set a, 0x10					; READ_SECTORS
+	set b, [x+partition_start]	; partition start
+	set c, [x+partition_size]	; partition size
+	set x, 0					; to address 0
+	hwi j						; do that
+	set pc, 0					; transfer control there
