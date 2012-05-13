@@ -1,0 +1,41 @@
+; hello world. DCPU16 1.7, LEM1802
+
+	set i, 0	; we'll use i to iterate over possible devices
+	hwn j		; j holds number of attached devices
+
+device_detection:
+	hwq i							; try a device
+	ife b, 0x7349					; is it a monitor?
+		ife a, 0xf615
+			set pc, found_lem1802	; yay!
+	add i, 1						; boo. Try the next device
+	ifn i, j						; if we're not out of devices
+		set pc, device_detection	; loop around
+
+	sub pc, 1						; we hang forever here if we couldn't find a monitor
+	
+found_lem1802:
+	set a, 0		; MEM_MAP_SCREEN
+	set b, 0x8000	; let's have it at 0x8000, seems to be traditional
+	hwi i			; tell the monitor that's what we want
+	
+	; at this point we can slap whatever data we want into 0x8000 .. 0x817f 
+	; and it'll get displayed using the default font and palette
+	
+	set i, 0x8000		; destination
+	set j, message		; source
+	set c, 0xc280		; a particularly fun colour if the emulator implements the blink bit
+	
+message_print_loop:
+	bor [j], c			; colour the data
+	sti [i], [j]		; copy the data
+	ifn j, message_end	; finished?
+		set pc,	message_print_loop	; nope. go around.
+
+	sub pc, 1			; Done. Hang forever here.
+
+	; different assemblers encode strings differently, let's do it ourselves
+	; and go with one word per character here for simplicity
+message:
+	dat 0x0048, 0x0065, 0x006c, 0x006c, 0x006f, 0x0020, 0x0077, 0x006f, 0x0072, 0x006c, 0x0064, 0x0021 
+message_end:
