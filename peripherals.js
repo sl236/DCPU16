@@ -452,10 +452,10 @@ Peripherals.push(function()
     function clockTick()
     {
         ++interruptTickCount;
-        ++tickCount;
 
         if (interruptTickCount >= tickRate)
         {
+	        ++tickCount;
             interruptTickCount = 0;
             if (message && tickRate && !Emulator.paused)
             {
