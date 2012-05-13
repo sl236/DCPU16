@@ -105,7 +105,7 @@
     jsr: 0x01,
     
     hcf: 0x07,
-    int: 0x08,
+    "int": 0x08,
     iag: 0x09,
     ias: 0x0a,
     rfi: 0x0b,

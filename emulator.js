@@ -521,28 +521,6 @@
     }
 
     // -----------------------
-    Emulator.Dump = function(_arg)
-    {
-        var addr = _arg.shift();
-        var count = _arg.shift();
-        addr = (addr == undefined) ? 0 : parseInt(addr) & 0xFFF0;
-        count = (count == undefined) ? 1 : parseInt(count);
-        var result = '';
-        for (var i = 0; i < count; i++)
-        {
-            result += Console.H16(addr) + ':  ';
-            for (var j = 0; j < 16; j++)
-            {
-                result += Console.H16(Emulator.mem[addr++]) + ' ';
-            }
-            result += '\n';
-        }
-        result = result.substring(0, result.length - 1);
-        Console.Log(result);
-    }
-
-
-    // -----------------------
     Emulator.Trace = function()
     {
         var start = (new Date()).getTime();

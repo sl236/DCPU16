@@ -2,7 +2,7 @@
 ; Tries all devices until it finds a disk inserted into a drive and successfully reads the first sector.
 ; Transfers control there.
 
-def BOOTROM_ORIGIN 		0x0000
+def BOOTROM_ORIGIN		0xFF00
 def BOOTSECTOR_ORIGIN	0xF000
 
 .org BOOTROM_ORIGIN
