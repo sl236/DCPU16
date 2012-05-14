@@ -1,0 +1,11 @@
+A JavaScript [http://0x10c.com/doc/dcpu-16.txt DCPU16] emulator implementation is '''[http://www.toothycat.net/~sham/dcpu16 here]'''. 
+
+It implements the [http://pastebin.com/raw.php?i=Q4JvQvnM v1.7 spec], and the following devices:
+* [http://dcpu.com/highnerd/rc_1/lem1802.txt LEM 1802] monitor
+* [http://dcpu.com/highnerd/rc_1/keyboard.txt Generic keyboard]
+* [http://dcpu.com/highnerd/rc_1/clock.txt Generic clock]
+* [https://gist.github.com/2495578 HMD2043 floppy drive] (not Notch's, but he said he'll use that spec verbatim or nearly so).
+
+One of each is attached to the DCPU (in arbitrary order, check device IDs on startup).
+
+An asynchronous command shell is provided for debugging and controlling the emulation. Online help is provided via the ''help'' command. The ''asm'' command will switch to assembly editing mode, allowing you to paste DCPU16 assembly source from elsewhere on the web.
