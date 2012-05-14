@@ -29,4 +29,39 @@ descriptor, and keyboard access should be performed using ReadCh or term_readlin
 
 -----
 
-Filesystem
+File timestamps are essentially meaningless on this platform, since we don't have anything like a reliable real-time clock. I don't anticipate much use for permissions, owner IDs etc - we're not writing multiuser systems here. All of this data is basically wasted inode space. Floppy disks are *enormous* - over twenty times available memory size - but bloody slow, so we want to minimise disk access. A minix-like fs seems like a good fit (hierarchical inodes, a bitmap to manage free space - one bit per sector means a 1.44Mb floppy's worth of bitmap is just three sectors!), but we really want to restructure things a little to get as much bang for buck from every sector read as possible, IMO. 
+
+IMO whatever formats people do go with, we need to agree that the first sector (sector 0) of a disk is (a) a boot sector (you can load it into memory and transfer control to the first word and something sane will generally happen), and (b) contains some magic in the last couple of words to enable software to identify the filesystem in use.
+
+So, our theoretical minix-like fs. There's no need for a superblock, as all relevant information can be deduced (we know it's this fs because we matched the boot sector magic; it fills the entire disk, the device tells us how big that is and what the sector size is, so we know how many sectors the bitmap takes up). It makes sense for inodes to be sector-sized, the root inode to be sector 1, the bitmap to be sector 2 (for a 1.44Mb floppy with 512-word sectors that's just 90 words, one sector should be enough for any sensibly-sized carrier), everything else is then either walkable to from the root inode or marked as free in the bitmap. We could compress these three entities into 2 or even 1 sector if we really wanted, I guess. I'm saying "bitmap" singular - I don't really see a good reason to separate inode and data areas into different zones (yah, yah, fragmentation, are you *seriously* going to even half fill one floppy? What *with*? It'll take aeons, too!).
+
+IMO the filenames should be stored in the directory inodes, and the file inodes should just contain size, flags and data; this would mean directory listing, existence tests and directory walking perform sensibly enough for scripting. We could also cache file size and type in the directory entry for performance reasons, although it should be understood those would not be canonical and the OS should refresh them before actually performing operations on a file. Filename comparison time is a factor, we should probably store a filename hash to allow quick rejections. Sectors are pretty large compared to the size of an average DCPU16 utility, it'd be good to have a "simple file" form where instead of listing extents, the file data simply fills the rest of the inode if it's small enough.
+
+By not separating inodes from data, we have made recovery of corrupt filesystems more difficult. We can throw a couple of words per inode at that: start each inode with some magic and a link to the parent, so we can have some kind of scanning tool perform disaster recovery by scanning a disk for things that look like inodes then checking what it finds for consistency.
+
+So, what does the whole thing look like? Let's flesh out some implementation detail
+
+; sector 0 is the boot sector. Last 2 words are magic to identify the FS. Make it 4 ascii characters so you can pick it out in a hexdump.
+; sector 1 is the root directory inode, see below.
+; sector 2 is the volume bitmap. bits 0, 1 and 2 are always set, natch. We could even reserve a few words at the end of this for caching superblock-like info, 'cos really, 4Mb's enough for anyone, right?
+; rest of disk is inodes mixed with data
+
+Inodes look something like this:
+; 4 words magic (or maybe 3+checksum, but keeping a checksum up to date would be quite a cost)
+; 1 word flags (is this a file, directory, or something else? - symlink/device if your OS supports them? Is the inode simple - does the inode data area actually contain this entity's content - or is it a list of starting sector / size pairs describing where the content is?)
+; 1 word reference count (so we can have hard links and not delete the target until all the referents have gone)
+; 1 word total size of entity data in words
+; 1 word parent inode (self for root)
+.
+. (data area)
+.
+
+For files, depending on flags, the data area is either a list of sector start/count pairs describing where the fragments of the file are found on disk, or simply the file content
+For directories, the the data area is a list of directory records (see below). You could support the simple flag not being set I guess, but really, who wants more than 32 files at all, never mind in a directory?
+
+Directory records then look a bit like this:
+1 word filename hash.
+8 words filename. With two arbitrary characters per word, that gives us half a terminal line of filename, plenty enough for even the most verbose of us.
+1 word inode pointer.
+1 word cached file size.
+1 word cached file type.

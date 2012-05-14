@@ -21,7 +21,7 @@ def fs_stat			0xD	; z; a..b: filepath  on success and if entry exists, returns f
 def fs_api_size		0xE
 
 def fs_impl_next	0
-def fs_impl_mount	1	; mount takes device id in a, starting sector in b, sector count in c. Returns FS API instance pointer in B and 0 in A on success, or a nonzero error code in A on failure.
+def fs_impl_mount	1	; mount takes device id in a, returns FS API instance pointer in B and 0 in A on success, or a nonzero error code in A on failure.
 
 def fs_filetype_file	0
 def fs_filetype_dir		1
@@ -38,20 +38,11 @@ mount_device:
 
 ; ----- Filesystem implementations
 def fs_device			fs_api_size+0
-def fs_start_sector		fs_api_size+1
+def fs_sector_size		fs_api_size+1
 def fs_sector_count		fs_api_size+2
 def fs_memory_handle	fs_api_size+3
 def fs_descriptor_size	fs_api_size+4
 
-tarfs_mount:
+moonfs_mount:
 	set a, 0xffff	; todo
 	set pc, pop
-	
-ramfs:
-	dat 0
-	dat ramfs_mount
-	
-ramfs_mount:
-	set a, 0xffff	; todo
-	set pc, pop
-	
