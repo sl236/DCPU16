@@ -1,0 +1,32 @@
+kernel.dasm16 pulls in everything required for a monolithic cooperative multitasking kernel and builds an image. 
+It is expected that the boot process will load this image to address 0 then transfer control there. 
+bootrom.dasm16 and bootsector.dasm16 form an example of such a process.
+
+MoonOS/api.dasm16 defines the public API entrypoints. Kernel layout may change between revisions, so programs should use
+the definitions here to communicate with the kernel.
+
+MoonOS/defs.dasm16 defines kernel data structures. Process memory looks as follows:
+
+process start: kernheader
+.
+.
+(process start + kernheader_size):
+.
+. (this memory available to process)
+.
+(end of memory): kerntable
+.
+.
+(kerntable + kerntable_size)
+
+malloc() / free() pass pointers to a kerntable structure (from which the start of the memory block in question may be obtained).
+[proclist] always refers to the kerntable structure of the currently running process.
+
+Also of interest is the terminal descriptor structure. The kernel provides virtualisation for one screen and keyboard 
+(the first of each in the device enumeration). Programs should not access these devices directly with HWI. Instead, term_alloc should
+be used to allocate a suitable terminal descriptor and attach it to the process; mapped memory pointers can be obtained by examining the
+descriptor, and keyboard access should be performed using ReadCh or term_readline.
+
+-----
+
+Filesystem

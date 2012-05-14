@@ -1,0 +1,23 @@
+In addition to the instruction syntax used in the examples by Notch, the assembler supports the following:
+* ''org'' / ''.org'' / ''origin'' - followed by a numerical expression, the origin directive begins a block of assembly at the address given by the expression
+* ''dat'' - followed by a list of quoted strings and numerical expressions, the data directive emits the corresponding words at the current position
+* ''ret'' as an alias for SET PC, POP
+* ''b'' followed by an expression will attempt to generate a single-instruction branch. The instruction may trash O. Assembly will fail if a suitable instruction/operand combination cannot be found.
+* anywhere a numerical constant may occur, a mathematical expression optionally using labels may also occur (with the caveat that origin directives can only refer to labels preceding them). Constant expressions evaluating to values in the 0x00..0x1f range will use the appropriate constant in the operand field, other values will cause a multiword instruction to be emitted.
+* local numerical labels are supported, similar to GCC. Unlike GCC, when referring to a numerical label, you *must* specify whether to search forward or back from the referring instruction by appending 'f' or 'b' respectively; e.g.
+  1:
+    ifg a, b
+      b 1f ; bail out
+    ; do stuff
+    b 1b ; loop round
+  1:
+* def may be used to assign the result of an expression to a label. When relocation support is added, expressions depending on labels will get relocated, while those depending only on def-labels and constants will not.
+* macros are supported. Parameters may be supplied, and will be interpolated as appropriate. Macro parameter names must start with an underscore. Macro substitution is not (currently) recursive, only one level is supported.
+  macro test (_a, _b, _c)
+    dat (_a+_b), _c
+  endm
+  test( 1, 2, 7 )
+expands to
+  dat 3, 7
+
+There is a GitHub repository for the project [https://github.com/sl236/DCPU16 here]. 

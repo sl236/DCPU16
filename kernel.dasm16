@@ -1,25 +1,7 @@
 ; ------------------
 ; public API
 ; ------------------
-; NB. TaskSwitch may trash any registers except SP.
-; Kernel functions and interrupts may push up to eight words of data to process stack.
-
-def Exit			    0x00	; exit current process
-def Fork			    0x02	; spawn a new process
-def ReadChar		    0x04	; line input to be written in terms of this, its code held in the process that uses it
-; candidates for exposing:
-; malloc
-; free
-; rpccall
-; rpcwait
-; term_alloc
-; term_release
-; term_println
-; fdd_read_sector
-; fdd_write_sector
-
-;
-def TaskSwitch			0x1f
+.include "MoonOS/api.dasm16"
 
 ; ------------------
 ; kernel implementation
