@@ -41,7 +41,10 @@ load('assembler.js');
 
     Console.Log = function(_text)
     {
-        java.lang.System.err.println(_text);
+        if( !Wrapper.options['q'] )
+        {
+            java.lang.System.err.println(_text);        
+        }
     }
 
     Console.ReadFile = function(_file, _callback)
@@ -115,13 +118,18 @@ load('assembler.js');
                 }
                 else if( Wrapper.options['O'] == 'dat' )
                 {
-                	var last;
-                	for ( last = 0xffff; last && !Emulator.mem[last]; --last )
-                		;
-                    for (var i = 0; i <= last; i+=0x8)
+                    var first;
+                    for(first=0;(first<0xffff)&&!Emulator.mem[first];++first)
+                        ;
+                    var last;
+                    for(last=0xffff;last&&!Emulator.mem[last];--last)
+                        ;
+                    first=(first& ~7)>>>0;
+                    print('.ORG ' + '0x' + Console.H16(first));
+                    for(var i=first;i<=last;i+=0x8)
                     {
                         var s = '';
-                        for( var j = 0; j < 0x8; j++ )
+                        for( var j = 0; (j < 0x8) && ((i+j)<=last); j++ )
                         {
                             s += ', 0x' + Console.H16(Emulator.mem[i+j]);
                         }
@@ -130,13 +138,17 @@ load('assembler.js');
                 }
                 else if( Wrapper.options['O'] == 'xxd' )
                 {
-                	var last;
+                    var first;
+                    for( first=0;(first<0xffff)&&!Emulator.mem[first]; ++first )
+                        ;
+                    var last;
                 	for ( last = 0xffff; last && !Emulator.mem[last]; --last )
                 		;
-                    for (var i = 0; i <= last; i+=0x4)
+                	first = (first & ~3)>>>0;
+                    for (var i = first; i <= last; i+=0x8)
                     {
                         var s = Console.H16(i*2) + ':';
-                        for( var j = 0; j < 0x8; j++ )
+                        for( var j = 0; (j < 0x8) && ((i+j)<=last); j++ )
                         {
                             s += ' ' + Console.H16(Emulator.mem[i+j]);
                         }

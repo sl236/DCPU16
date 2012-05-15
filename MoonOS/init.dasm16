@@ -15,6 +15,11 @@ init:
 	set [1], exit_impl			; the jump at location 0 needs to go to the Exit implementation
 	set sp, initproc_table		; at boot, the stack pointer was not set up for us
 	ias isr_entry					; can now handle interrupts
+
+	; -- fix up freelist so it contains all memory from kernel_end to 0xffff
+	set [freemem_first+kerntable_next], freelist
+	set [freemem_first+kerntable_prev], freelist
+	set [freemem_first+kerntable_block_start], kernel_end
   
 	; -- Free memory size calculation
 	set x, freelist

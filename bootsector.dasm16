@@ -3,29 +3,165 @@
 ; ------------------
 
 ; assumptions:
-; * device ID this sector was loaded from is available, and is passed in register j
-; * a partition table is held near the end of the sector (see defs.dasm16)
-; * the boot sector was loaded high enough in memory that we can load entire kernel to address 0 without overwriting bootsector code
+; * device ID this sector was loaded from is available, and is passed in register j (source trivially mutable, but ID must be available)
 ; * the device being used is an HMD2043 ( https://gist.github.com/2495578 ) or compatible
 
 .include "MoonOS/defs.dasm16"
+
+def BOOT_AREA 0x6800	; somewhere safe from being overwritten
+def VRAM_AREA 0x8000	; seems to be traditional
+def SCREEN_COLS	32
+def SCREEN_ROWS	12
+def DISPLAY_COLOUR 0x2000
+
 .org 0
-	set x, pc	; one instruction into sector
-	sub x, 1	; start of sector
-	set a, 1	; QUERY_MEDIA_PARAMETERS
-	add x, b	; x = end of sector
-	sub x, boot_sector_record_size	; x = start of partition table
+entry:
+	set x, pc		; one instruction into sector
+	sub x, 1		; start of sector
+	set z, j		; FDD id
+	set a, 1		; QUERY_MEDIA_PARAMETERS
+	hwi z			; ask the disk
+	set y, x		; copy start of sector
+	add y, b		; y = end of sector
+	ife x, BOOT_AREA; already relocated?
+		add pc,	(relocated-1f); PIC
+1:
+	set i, x		; from start of sector
+	set j, BOOT_AREA; to entrypoint
+1:
+	sti [j], [i]		; copy
+	ifn i, y			; done?
+		sub pc, (1f-1b)	; PIC
+1:
+	
+	set pc, BOOT_AREA+relocated		; absolute address
+	
+relocated:
+	set sp, BOOT_AREA+stack
+	set [BOOT_AREA+sector_size], b	; now we are where we told the assembler we are, we can save state somewhere sensible
+	set [BOOT_AREA+hmd2043_id], z	;
 
-partition_search:
-	ife [x+partition_fs], fstype_kernel
-		b found_partition
-	add x, partition_record_size
-	b partition_search
+	set [BOOT_AREA+lem1802_id], 0	; initially assume no screen
+	set i, 0	; we'll use i to iterate over possible devices
+	hwn j		; j holds number of attached devices
+	
+1:
+	hwq i							; try a device
+	ife b, 0x7349					; is it a monitor?
+		ife a, 0xf615
+			b 1f					; yay!
+	add i, 1						; boo. Try the next device
+	ifn i, j						; if we're not out of devices
+		b 1b						; loop around
 
-found_partition:
-	set a, 0x10					; READ_SECTORS
-	set b, [x+partition_start]	; partition start
-	set c, [x+partition_size]	; partition size
-	set x, 0					; to address 0
-	hwi j						; do that
-	set pc, 0					; transfer control there
+	b 2f
+	
+1:
+	set [BOOT_AREA+lem1802_id], i	; monitor ID
+	set a, 0						; MEM_MAP_SCREEN
+	set b, VRAM_AREA				;
+	hwi i							; tell the monitor that's what we want
+
+	; clear screen
+	set i, VRAM_AREA
+	set b, VRAM_AREA+SCREEN_COLS*SCREEN_ROWS
+1:
+	sti [i], 0
+	ifn i, b
+		b 1b		
+			
+2:
+	set a, BOOT_AREA+msg_booting
+	jsr BOOT_AREA+println
+	
+	; check the FS is one we know how to deal with
+	set x, BOOT_AREA
+	add x, [BOOT_AREA+sector_size]
+	ife [x-2], 0x4D6F
+		ife [x-1], 0x6F6E
+			set pc, BOOT_AREA+boot_moonfs
+	; could handle different magics here
+	
+	set a, BOOT_AREA+msg_bad_bs_magic
+	jsr BOOT_AREA+println
+	sub pc, 1
+
+	
+boot_moonfs:
+	set a, BOOT_AREA+msg_moonfs
+	jsr BOOT_AREA+println
+
+	set a, 0x10		; READ_SECTORS
+	set b, 1		; superblock + root inode
+	set c, 2		;
+	set x, BOOT_AREA
+	add x, [BOOT_AREA+sector_size]
+	set [BOOT_AREA+root_inode], x
+	hwi [BOOT_AREA+hmd2043_id]
+	ife a, 0
+		b 1f
+	set a, BOOT_AREA+msg_readerr
+	jsr BOOT_AREA+println
+	sub pc, 1
+1:
+	sub pc, 1	; TODO
+
+; prints null-terminated message in a
+print:
+	set push, i
+	set push, j
+	set push, c
+	set push, a
+	b 2f
+	
+; scrolls screen up one line, then prints null-terminated message in a
+println:
+	set push, i
+	set push, j
+	set push, c
+	set push, a
+	
+	set i, VRAM_AREA
+	set j, VRAM_AREA+SCREEN_COLS
+	set c, VRAM_AREA+(SCREEN_COLS*SCREEN_ROWS)
+1:
+	sti [i], [j]
+	ifn j, c
+		b 1b
+		
+2:
+	set i, VRAM_AREA+(SCREEN_COLS*(SCREEN_ROWS-1))
+	set j, a
+	set c, DISPLAY_COLOUR
+1:
+	set a, [j]
+	bor a, c
+	sti [i], a
+	ifn [j], 0
+		b 1b
+	set c, VRAM_AREA+(SCREEN_COLS*SCREEN_ROWS)
+	ife i, c
+		b 1f
+2:
+	sti [i], 0
+	ifn i, c
+		b 2b
+1:
+	set a, pop
+	set c, pop
+	set j, pop
+	set i, pop
+	set pc, pop
+							
+	dat 0, 0, 0, 0, 0, 0, 0, 0
+stack:
+
+root_inode:		dat 0
+sector_size:	dat 0
+hmd2043_id:		dat 0
+lem1802_id:		dat 0
+
+msg_booting:		dat "MoonOS bootloader", 0
+msg_moonfs:			dat "MoonFS found", 0
+msg_bad_bs_magic:	dat "Unknown BS magic", 0
+msg_readerr:		dat "Read error", 0

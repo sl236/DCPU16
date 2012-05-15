@@ -2,7 +2,7 @@
 ; Tries all devices until it finds a disk inserted into a drive and successfully reads the first sector.
 ; Transfers control there.
 
-def BOOTROM_ORIGIN		0xFF00
+def BOOTROM_ORIGIN		0
 def BOOTSECTOR_ORIGIN	0xF000
 
 .org BOOTROM_ORIGIN
@@ -25,7 +25,8 @@ found_hmd2043:
 	ifn b, 1					; no disk?
 		b 2b					; bail
 	set a, 0x10					; READ_SECTORS
-	set b, 1					; one sector
+	set b, 0					; sector zero
+	set c, 1					; one sector
 	set x, BOOTSECTOR_ORIGIN	; to bootsector origin
 	hwi j						; do that
 	ifn a, 0					; got an error?

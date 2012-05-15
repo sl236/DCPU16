@@ -54,15 +54,29 @@ def io_op_ptr			5
 def io_op_process		6
 def io_op_descriptor_size (io_op_process+1)
 
-; ----- misc
-def partition_start			0
-def partition_size			1
-def partition_fs			2
-def partition_record_size	3
-def partition_magic_0		0x4D6F
-def partition_magic_1		0x6F6E
-def boot_sector_record_size ((partition_size*4)+2)	; 4 partition records and two words for partition magic. This is at the end of the sector, rest of sector is available for boot code.
+; ----- moonfs
+def inode_magic			0
+def inode_entity_flags	4
+def inode_entity_size	5
+def inode_refcount		6
+def inode_parent		7
+def inode_reserved_area	8
+def inode_header_size	12
 
-def fstype_unused	0		; unused partition record
-def fstype_tarfs	0x5441	; 'TA'	UStar file (read-only)
-def fstype_kernel	0x4F53	; 'OS'	OS kernel; entire partition to be loaded by bootsector code to address 0
+def inode_type_mask		((1<<3)-1)
+def inode_type_free		0			; unused entry
+def inode_type_file		1
+def inode_type_dir		2
+def inode_flag_simple	(1<<4)
+
+def inode_magic_moonfs0	0x6c75
+def inode_magic_moonfs1	0x6e61
+def inode_magic_moonfs2	0xfe01
+def inode_magic_moonfs3	0x696e
+
+; directory entry structure
+def direntry_cname			0	; mangled: bits 0..14 are two chars in range 0..127; bits 15, 16 are bottom two bits of all other chars, xored together
+def direntry_inode			7	; inode for this entry
+def direntry_cached_size	8	; for directory listings, might be out of date
+def direntry_cached_flags	9	; type is immutable so should be safe, other bits might be out of date
+def direntry_size			10

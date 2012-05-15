@@ -36,10 +36,5 @@ init_start:
 ; Rest of memory is available immediately.
 ; ------------------
 kernel_end: 
-
-.org 0 - kerntable_size
-freemem_first:
-freemem_last:
-	dat freelist   		; next
-	dat freelist		; prev
-	dat kernel_end 		; block start
+def freemem_first	0 - kerntable_size
+def freemem_last	0 - kerntable_size
