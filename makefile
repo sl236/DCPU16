@@ -1,7 +1,5 @@
 .DEFAULT_GOAL := all
 
-kernel.dasm16 : MoonOS/*.dasm16
-
 FLOPPY_DIR := floppy
 FLOPPY_CONTENT := $(addprefix $(FLOPPY_DIR)/,kernel.image )
 
@@ -20,3 +18,6 @@ $(FLOPPY_DIR):
 	
 %.b64 : %
 	base64 $< > $@
+
+clean:
+	rm $(FLOPPY_CONTENT) floppy.img floppy.img.b64

@@ -11,20 +11,19 @@ def fs_fseek		0x3	; z; a: handle  b: position (low)  c: position(high)  returns 
 def fs_ftell		0x4	; z; a: handle  returns current position in b(low), file size in X (low), Y (high)
 def fs_fclose		0x5	; z; a: handle
 def fs_fflush		0x6	; z; a: handle
-def fs_destroyfs	0x7	; z
-def fs_dopendir		0x8	; z; a..b: filename	on success, returns handle in x
-def fs_dreaddir		0x9	; z; a: handle			returns next directory entry name in b..c, type in x
-def fs_dclosedir	0xA ; z; a: handle
-def fs_mount		0xB	; z; a..b - target path, c - target filesystem API block
-def fs_umount		0xC ; z; a..b - target path
-def fs_stat			0xD	; z; a..b: filepath  on success and if entry exists, returns filesize in X(low), Y(high), file type in B
-def fs_api_size		0xE
+def fs_dopendir		0x7	; z; a..b: filename	on success, returns handle in x
+def fs_dreaddir		0x8	; z; a: handle			returns next directory entry name in b..c, type in x
+def fs_dclosedir	0x9 ; z; a: handle
+def fs_stat			0xA	; z; a..b: filepath		on success and if entry exists, returns filesize in X(low), Y(high), file type in B
+def fs_unlink		0xB	; z; a..b: filepath
+def fs_errstr		0xC	; z; a: error code. Returns pointer to compressed human-readable message for error code.
+def fs_api_size		0xD
 
 def fs_impl_next	0
 def fs_impl_mount	1	; mount takes device id in a, returns FS API instance pointer in B and 0 in A on success, or a nonzero error code in A on failure.
 
-def fs_filetype_file	0
-def fs_filetype_dir		1
+def fs_filetype_file	inode_type_file
+def fs_filetype_dir		inode_type_dir
 
 def fs_open_mode_r		1
 def fs_open_mode_w	 	2
@@ -32,17 +31,87 @@ def fs_open_mode_rw 	(fs_open_mode_r|fs_open_mode_w)
 def fs_open_mode_trunc 	4
 def fs_open_mode_create	8
 
-; -----
-mount_device:
-
-
 ; ----- Filesystem implementations
-def fs_device			fs_api_size+0
-def fs_sector_size		fs_api_size+1
-def fs_sector_count		fs_api_size+2
-def fs_memory_handle	fs_api_size+3
-def fs_descriptor_size	fs_api_size+4
+def moonfs_fs_api_ptr			0
+def moonfs_fs_device			1
+def moonfs_fs_sector_size		2
+def moonfs_fs_sector_count		3
+def moonfs_fs_memory_handle		4
+def moonfs_fs_instance_size		5
 
-moonfs_mount:
-	set a, 0xffff	; todo
+def moonfs_success				0
+def moonfs_err_not_implemented	1
+def moonfs_err_bad_magic		2
+
+moonfs_api:
+	dat moonfs_fopen_impl
+	dat moonfs_fread_impl
+	dat moonfs_fwrite_impl
+	dat moonfs_fseek_impl
+	dat moonfs_ftell_impl
+	dat moonfs_fclose_impl
+	dat moonfs_fflush_impl
+	dat moonfs_dopendir_impl
+	dat moonfs_dreaddir_impl
+	dat moonfs_dclosedir_impl
+	dat moonfs_stat_impl
+	dat moonfs_errstr
+
+moonfs_mount_impl:
+	set a, moonfs_err_not_implemented	; todo
 	set pc, pop
+
+
+; --
+moonfs_fopen_impl:
+	set pc, moonfs_not_implemented ; todo
+	
+; --
+moonfs_fread_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --	
+moonfs_fwrite_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_fseek_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_ftell_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_fclose_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_fflush_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_dopendir_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_dreaddir_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_dclosedir_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_stat_impl:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_errstr:
+	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_not_implemented:
+	set a, moonfs_err_not_implemented
+	set pc, pop
+	

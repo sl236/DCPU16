@@ -55,13 +55,16 @@ def io_op_process		6
 def io_op_descriptor_size (io_op_process+1)
 
 ; ----- moonfs
-def inode_magic			0
-def inode_entity_flags	4
-def inode_entity_size	5
-def inode_refcount		6
-def inode_parent		7
-def inode_reserved_area	8
-def inode_header_size	12
+def inode_magic				0
+def inode_entity_flags		4
+def inode_entity_size_high	5
+def inode_entity_size_low	6
+def inode_refcount			7
+def inode_parent			8
+def inode_reserved_area		9
+def inode_header_size		12
+
+def inode_direntry_first	inode_reserved_area		; for directory listings
 
 def inode_type_mask		((1<<3)-1)
 def inode_type_free			0			; unused entry
@@ -78,6 +81,6 @@ def inode_magic_moonfs3	0x696e
 ; directory entry structure
 def direntry_cname			0	; two chars per word
 def direntry_inode			7	; inode for this entry
-def direntry_cached_size	8	; for directory listings, might be out of date
-def direntry_cached_flags	9	; type is immutable so should be safe, other bits might be out of date
+def direntry_cached_flags	8	; type is immutable so should be safe, other bits might be out of date
+def direntry_next			9	; next used direntry, for directory traversal
 def direntry_size			10

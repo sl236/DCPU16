@@ -153,7 +153,17 @@ crash_readerr:
 	set c, 1						; one at a time
 	set y, x						; calc. sector data start
 	add y, inode_header_size
-	set z, [x+inode_entity_size]	; kernel size
+	set z, [x+inode_entity_size_low]; kernel size
+	ife [x+inode_entity_size_high], 0
+		b 2f
+1:
+	set a, BOOT_AREA+msg_too_big
+	jsr BOOT_AREA+println
+	sub pc, 1
+2:
+	ifg z, BOOT_AREA
+		b 1b
+					
 	set x, 0						; read to addr. zero
 1:
 	set b, [y]						; sector index
@@ -163,7 +173,6 @@ crash_readerr:
 		set pc, BOOT_AREA+crash_readerr
 	add y, 1						; next sector
 	add x, [BOOT_AREA+sector_size]	; next memory location
-	dat 0
 	ifl x, z						; done?
 		b 1b						; go around
 		
@@ -241,7 +250,8 @@ msg_booting:		dat ~"MoonOS bootloader", 0
 msg_moonfs:			dat ~"MoonFS found", 0
 msg_bad_bs_magic:	dat ~"Unknown BS magic", 0
 msg_readerr:		dat ~"Read error", 0
-msg_found:			dat ~"Located kernel", 0
+msg_found:			dat ~"Found kernel", 0
 msg_notfound:		dat ~"Kernel not found", 0
-msg_inode_ok:		dat ~"Kernel inode loaded", 0
+msg_inode_ok:		dat ~"Kernel inode OK", 0
+msg_too_big:		dat ~"Kernel too big", 0
 kernel_file:		dat ~"kernel.image", 0
