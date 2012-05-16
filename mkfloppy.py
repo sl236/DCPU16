@@ -10,10 +10,12 @@ import stat
 SECTOR_SIZE = 1024
 SOURCE_DIR = 'floppy'
 OUT_FILE = 'floppy.img'
+#FLOPPY_SIZE = SECTOR_SIZE * 1440
+FLOPPY_SIZE = SECTOR_SIZE * 180
 
 # from defs.dasm16
 
-direntry_cname =		0	# mangled: bits 0..14 are two chars in range 0..127; bits 15, 16 are bottom two bits of all other chars, xored together
+direntry_cname =		0	# two chars per word
 direntry_inode =		7	# inode for this entry
 direntry_cached_size =	8	# for directory listings, might be out of date
 direntry_cached_flags =	9	# type is immutable so should be safe, other bits might be out of date
@@ -58,7 +60,7 @@ def adddirentry(fs, parent, child, name):
 	
 	tgt = parent*(SECTOR_SIZE/2) + inode_header_size + tgt
 	
-	writemangledname( fs, parent + tgt, name )
+	writestring( fs, parent + tgt, name )
 	writeshort(fs, parent + tgt + direntry_inode, len(fs)/SECTOR_SIZE )
 	writeshort(fs, parent + tgt + direntry_cached_size, readshort( fs, child*(SECTOR_SIZE/2)+inode_entity_size ) )	
 	writeshort(fs, parent + tgt + direntry_cached_flags, readshort( fs, child*(SECTOR_SIZE/2)+inode_entity_flags ) )
@@ -148,19 +150,16 @@ def gethash( data ):
 		sum ^= chars[i]
 	return sum
 
-def writemangledname( dest, word_offset, data ):
+def writestring( dest, word_offset, data ):
 	if(len(data) > direntry_cname_maxlength):
 		print >> sys.stderr, data+': filename too long!'
 	chars = [ord(c) for c in data]
 	if((len(chars) & 1)!=0):
 		chars.append(0)
 	sum = 0
-	for i in range(0, len(chars)):
-		sum ^= chars[i]
 	for i in range(0, len(chars), 2):
-		code = ((chars[i]&0x7f) << 7) | (chars[i+1]&0x7f)
-		hash = ((sum ^ chars[i] ^ chars[i+1]) & 3)
-		writeshort( dest, word_offset+(i/2), code|(hash<<14) )	
+		code = ((chars[i]&0x7f) << 8) | (chars[i+1]&0x7f)
+		writeshort( dest, word_offset+(i/2), code )	
 	
 # ------------------------------
 # check prerequisites
@@ -191,6 +190,9 @@ fs[SECTOR_SIZE-1] = b'n'
 
 fs += bytearray( SECTOR_SIZE * b'\x00' )	# volume bitmap / superblock
 adddir( fs, '', SOURCE_DIR, 2 )
+
+if(len(fs)<FLOPPY_SIZE):
+	fs += bytearray( (FLOPPY_SIZE-len(fs)) * b'\x00' )
 
 with open(OUT_FILE, 'wb') as fd:
 	fd.write(fs)

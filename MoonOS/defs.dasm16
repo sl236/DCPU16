@@ -75,7 +75,7 @@ def inode_magic_moonfs2	0xfe01
 def inode_magic_moonfs3	0x696e
 
 ; directory entry structure
-def direntry_cname			0	; mangled: bits 0..14 are two chars in range 0..127; bits 15, 16 are bottom two bits of all other chars, xored together
+def direntry_cname			0	; two chars per word
 def direntry_inode			7	; inode for this entry
 def direntry_cached_size	8	; for directory listings, might be out of date
 def direntry_cached_flags	9	; type is immutable so should be safe, other bits might be out of date

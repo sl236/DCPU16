@@ -227,16 +227,38 @@
                 function(_m) { CountAssembledWords(1); return (function(expr) { return function() { EmitWord(eval(expr)); } })(_m[0][0]); }
             ],
 
-        quotedstring: ["singlequotedstring | doublequotedstring"],
-        singlequotedstring: ["/'/ quotedstringdata /'\\s*/", function(_m) { return _m[1]; } ],
-        doublequotedstring: ['/"/ quotedstringdata /"\\s*/', function(_m) { return _m[1]; } ],
+        quotedstring: ['/~?"/ quotedstringdata /"\\s*/', function(_m) 
+            {
+                var comp = (_m[0].length == 2) ? 1 : 0;
+                CountAssembledWords(comp ? Math.floor((_m[1].length+1)/2): _m[1].length);
+                return (function(_m,_comp) 
+                {
+                    return function()
+                    {
+                        if(_comp)
+                        {
+                            if( _m.length & 1 ) { _m.push(0); }
+                            for(var i = 0; i < _m.length; i+=2)
+                            {
+                                EmitWord((_m[i]<<8)|_m[i+1]);
+                            }                        
+                        }
+                        else
+                        {
+                            for(var i = 0; i < _m.length; i++)
+                            {
+                                EmitWord(_m[i]);
+                            }
+                        }
+                    }
+                })(_m[1],comp);
+            } ],
         quotedstringdata: ["quotedstringtuple | quotedstringunit"],
-        quotedstringtuple: ["quotedstringunit quotedstringdata", function(_m) { return (function(fn0, fn1) { return function() { fn0(); fn1(); } })(_m[0], _m[1]); } ],
+        quotedstringtuple: ["quotedstringunit quotedstringdata", function(_m) { return _m[0].concat(_m[1]); } ],
         quotedstringunit: ["stringchar | escape",
           function(_m)
           {
-              CountAssembledWords(1);
-              return (function(_code) { return function() { EmitWord(_code); } })(_m[0]);
+              return [ _m[0] ];
           }
         ],
         stringchar: ["/[^\"'\\\\]/", function(_m) { return _m[0].charCodeAt(0); } ],
