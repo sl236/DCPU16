@@ -64,14 +64,15 @@ def inode_reserved_area	8
 def inode_header_size	12
 
 def inode_type_mask		((1<<3)-1)
-def inode_type_free		0			; unused entry
-def inode_type_file		1
-def inode_type_dir		2
+def inode_type_free			0			; unused entry
+def inode_type_file			1
+def inode_type_dir			2
+def inode_type_superblock	7
 def inode_flag_simple	(1<<4)
 
 def inode_magic_moonfs0	0x6c75
 def inode_magic_moonfs1	0x6e61
-def inode_magic_moonfs2	0xfe01
+def inode_magic_moonfs2	0xfe00  ; orred with inode_type
 def inode_magic_moonfs3	0x696e
 
 ; directory entry structure

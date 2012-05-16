@@ -22,11 +22,12 @@ direntry_cached_flags =	9	# type is immutable so should be safe, other bits migh
 direntry_size =			10
 direntry_cname_maxlength = 14
 
-inode_type_mask		= ((1<<3)-1)
-inode_type_free		= 0		# unused entry
-inode_type_file		= 1
-inode_type_dir		= 2
-inode_flag_simple	= (1<<4)
+inode_type_mask			= ((1<<3)-1)
+inode_type_free			= 0		# unused entry
+inode_type_file			= 1
+inode_type_dir			= 2
+inode_type_superblock	= 7		# superblock record
+inode_flag_simple		= (1<<4)
 
 inode_magic			= 0
 inode_entity_flags	= 4
@@ -61,7 +62,7 @@ def adddirentry(fs, parent, child, name):
 	tgt = parent*(SECTOR_SIZE/2) + inode_header_size + tgt
 	
 	writestring( fs, parent + tgt, name )
-	writeshort(fs, parent + tgt + direntry_inode, len(fs)/SECTOR_SIZE )
+	writeshort(fs, parent + tgt + direntry_inode, child )
 	writeshort(fs, parent + tgt + direntry_cached_size, readshort( fs, child*(SECTOR_SIZE/2)+inode_entity_size ) )	
 	writeshort(fs, parent + tgt + direntry_cached_flags, readshort( fs, child*(SECTOR_SIZE/2)+inode_entity_flags ) )
 	writeshort(fs, parent*(SECTOR_SIZE/2) + inode_entity_size, readshort( fs, parent*(SECTOR_SIZE/2)+inode_entity_size ) + 1 )
@@ -74,7 +75,7 @@ def addfile(fs, name, path, parent):
 	
 	writeshort(inode, inode_magic+0, 0x6c75)						# magic0
 	writeshort(inode, inode_magic+1, 0x6e61)						# magic1
-	writeshort(inode, inode_magic+2, 0xfe01)						# magic2
+	writeshort(inode, inode_magic+2, 0xfe00|inode_type_file)		# magic2
 	writeshort(inode, inode_magic+3, 0x696e)						# magic3
 	writeshort(inode, inode_entity_flags, inode_type_file)			# flags
 	writeshort(inode, inode_entity_size, entity_size)				# entity size
@@ -107,7 +108,7 @@ def adddir(fs, name, path, parent):
 	
 	writeshort(inode, inode_magic+0, 0x6c75)									# magic0
 	writeshort(inode, inode_magic+1, 0x6e61)									# magic1
-	writeshort(inode, inode_magic+2, 0xfe02)									# magic2
+	writeshort(inode, inode_magic+2, 0xfe00|inode_type_dir)						# magic2
 	writeshort(inode, inode_magic+3, 0x696e)									# magic3
 	writeshort(inode, inode_entity_flags, inode_type_dir | inode_flag_simple)	# flags
 	writeshort(inode, inode_entity_size, entity_size)							# entity size
@@ -180,10 +181,12 @@ if( len(fs) == 0 ):
 	sys.exit(-1)
 
 sector_align(fs)
-fs[SECTOR_SIZE-4] = b'M'
-fs[SECTOR_SIZE-3] = b'o'
-fs[SECTOR_SIZE-2] = b'o'
-fs[SECTOR_SIZE-1] = b'n'
+fs[SECTOR_SIZE-6] = b'm'
+fs[SECTOR_SIZE-5] = b'o'
+fs[SECTOR_SIZE-4] = b'o'
+fs[SECTOR_SIZE-3] = b'n'
+fs[SECTOR_SIZE-2] = b'f'
+fs[SECTOR_SIZE-1] = b's'
 
 # ------------------------------
 # create initial filesystem
@@ -191,8 +194,34 @@ fs[SECTOR_SIZE-1] = b'n'
 fs += bytearray( SECTOR_SIZE * b'\x00' )	# volume bitmap / superblock
 adddir( fs, '', SOURCE_DIR, 2 )
 
+# mark used blocks
+usedsectors = int(len(fs)/SECTOR_SIZE)
+
+for i in range( 0, usedsectors & ~7 ):
+	fs[SECTOR_SIZE+(inode_header_size*2)+int(i/8)] = 0xFF
+
+if (usedsectors&7) != 0:
+	fs[SECTOR_SIZE+(inode_header_size*2)+int(usedsectors/8)] = ((1<<(usedsectors & 7))-1)<<(8-(usedsectors & 7))
+	
+# fill superblock structure
+superblock = SECTOR_SIZE/2
+writeshort(fs, superblock+inode_magic+0, 0x6c75)									# magic0
+writeshort(fs, superblock+inode_magic+1, 0x6e61)									# magic1
+writeshort(fs, superblock+inode_magic+2, 0xfe00|inode_type_superblock)				# magic2
+writeshort(fs, superblock+inode_magic+3, 0x696e)									# magic3
+writeshort(fs, superblock+inode_entity_flags, inode_type_superblock | inode_flag_simple)	# flags
+writeshort(fs, superblock+inode_entity_size, (FLOPPY_SIZE-len(fs))/SECTOR_SIZE)		# entity size for a superblock is the amount of free space on disk
+writeshort(fs, superblock+inode_refcount, 0x0001)									# refcount
+writeshort(fs, superblock+inode_parent, 1)											# parent
+writeshort(fs, superblock+inode_reserved_area+0, 0x0000)							# reserved
+writeshort(fs, superblock+inode_reserved_area+1, 0x0000)							# reserved
+writeshort(fs, superblock+inode_reserved_area+2, 0x0000)							# reserved
+writeshort(fs, superblock+inode_reserved_area+3, 0x0000)							# reserved
+
+# pad to floppy size
 if(len(fs)<FLOPPY_SIZE):
 	fs += bytearray( (FLOPPY_SIZE-len(fs)) * b'\x00' )
 
+# write out
 with open(OUT_FILE, 'wb') as fd:
 	fd.write(fs)

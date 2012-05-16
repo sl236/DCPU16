@@ -13,6 +13,7 @@ def VRAM_AREA 0x8000	; seems to be traditional
 def SCREEN_COLS	32
 def SCREEN_ROWS	12
 def DISPLAY_COLOUR 0x2000
+def MOONFS_KERNEL_SEARCH_START 0x2E
 
 .org 0
 entry:
@@ -23,11 +24,11 @@ entry:
 	hwi z			; ask the disk
 	set y, x		; copy start of sector
 	add y, b		; y = end of sector
-	ife x, BOOT_AREA; already relocated?
-		add pc,	(relocated-1f); PIC
+	ife x, BOOT_AREA			; already relocated?
+		add pc,	(relocated-1f)	; PIC
 1:
-	set i, x		; from start of sector
-	set j, BOOT_AREA; to entrypoint
+	set i, x			; from start of sector
+	set j, BOOT_AREA	; to entrypoint
 1:
 	sti [j], [i]		; copy
 	ifn i, y			; done?
@@ -42,8 +43,8 @@ relocated:
 	set [BOOT_AREA+hmd2043_id], z	;
 
 	set [BOOT_AREA+lem1802_id], 0	; initially assume no screen
-	set i, 0	; we'll use i to iterate over possible devices
-	hwn j		; j holds number of attached devices
+	set i, 0						; we'll use i to iterate over possible devices
+	hwn j							; j holds number of attached devices
 	
 1:
 	hwq i							; try a device
@@ -68,8 +69,8 @@ relocated:
 1:
 	sti [i], 0
 	ifn i, b
-		b 1b		
-			
+		b 1b
+					
 2:
 	set a, BOOT_AREA+msg_booting
 	jsr BOOT_AREA+println
@@ -77,35 +78,99 @@ relocated:
 	; check the FS is one we know how to deal with
 	set x, BOOT_AREA
 	add x, [BOOT_AREA+sector_size]
-	ife [x-2], 0x4D6F
-		ife [x-1], 0x6F6E
-			set pc, BOOT_AREA+boot_moonfs
+	ife [x-3], 0x6D6F
+	ife [x-2], 0x6F6E
+	ife [x-1], 0x6673
+		set pc, BOOT_AREA+boot_moonfs
+			
 	; could handle different magics here
 	
+	; not found a suitable handler for this magic
 	set a, BOOT_AREA+msg_bad_bs_magic
 	jsr BOOT_AREA+println
 	sub pc, 1
 
 	
 boot_moonfs:
-	set a, BOOT_AREA+msg_moonfs
+	set a, BOOT_AREA+msg_moonfs					; found MoonFS
 	jsr BOOT_AREA+println
 
-	set a, 0x10		; READ_SECTORS
-	set b, 1		; superblock + root inode
-	set c, 2		;
-	set x, BOOT_AREA
-	add x, [BOOT_AREA+sector_size]
-	set [BOOT_AREA+root_inode], x
+	set a, 0x10			; READ_SECTORS
+	set b, 1			; superblock + root inode
+	set c, 2			;
+	set x, BOOT_AREA				; boot sector
+	add x, [BOOT_AREA+sector_size]	; read two sectors immediately after
 	hwi [BOOT_AREA+hmd2043_id]
-	ife a, 0
-		b 1f
+	add x, [BOOT_AREA+sector_size]	; the first of those is the bitmap/superblock
+	set [BOOT_AREA+root_inode], x	; store the address of the second
+	ife a, 0						; was there an error?
+		b 1f						; then don't crash
+		
+crash_readerr:
+	set z, a
 	set a, BOOT_AREA+msg_readerr
 	jsr BOOT_AREA+println
 	sub pc, 1
-1:
-	sub pc, 1	; TODO
 
+; managed to read a moonfs root inode
+1:
+	add x, MOONFS_KERNEL_SEARCH_START	; start looking at direntries here
+1:
+	ife [x+direntry_cname+0], [BOOT_AREA+kernel_file+0]
+	ife [x+direntry_cname+1], [BOOT_AREA+kernel_file+1]
+	ife [x+direntry_cname+2], [BOOT_AREA+kernel_file+2]
+	ife [x+direntry_cname+3], [BOOT_AREA+kernel_file+3]
+	ife [x+direntry_cname+4], [BOOT_AREA+kernel_file+4]
+	ife [x+direntry_cname+5], [BOOT_AREA+kernel_file+5]
+	ife [x+direntry_cname+6], [BOOT_AREA+kernel_file+6]
+		b 1f	; found it!
+		
+	add x, direntry_size		; try the next one
+	ifn [x+direntry_inode], 0	; if we hit an unallocated entry, the file can't exist
+		b 1b
+	set a, BOOT_AREA+msg_notfound
+	jsr BOOT_AREA+println
+	sub pc, 1
+
+; found the kernel file; load its inode
+1:
+	set a, BOOT_AREA+msg_found
+	jsr BOOT_AREA+println
+	
+	set a, 0x10		; READ_SECTORS
+	set b, [x+direntry_inode]
+	set c, 1
+	set x, [BOOT_AREA+root_inode]
+	add x, [BOOT_AREA+sector_size]
+	hwi [BOOT_AREA+hmd2043_id]
+	ifn a, 0
+		set pc, BOOT_AREA+crash_readerr
+
+	set a, BOOT_AREA+msg_inode_ok
+	jsr BOOT_AREA+println
+					
+; loaded the kernel inode; load its data starting at 0
+	set c, 1						; one at a time
+	set y, x						; calc. sector data start
+	add y, inode_header_size
+	set z, [x+inode_entity_size]	; kernel size
+	set x, 0						; read to addr. zero
+1:
+	set b, [y]						; sector index
+	set a, 0x10						; READ_SECTORS
+	hwi [BOOT_AREA+hmd2043_id]		; read it
+	ifn a, 0						; error?
+		set pc, BOOT_AREA+crash_readerr
+	add y, 1						; next sector
+	add x, [BOOT_AREA+sector_size]	; next memory location
+	dat 0
+	ifl x, z						; done?
+		b 1b						; go around
+		
+	; successfully loaded a kernel image to address 0
+	set pc, 0						; transfer control to kernel
+
+; -------------------------------------
 ; prints null-terminated message in a
 print:
 	set push, i
@@ -114,7 +179,7 @@ print:
 	set push, a
 	b 2f
 	
-; scrolls screen up one line, then prints null-terminated message in a
+; scrolls screen up one line, then prints null-terminated compacted message in a
 println:
 	set push, i
 	set push, j
@@ -135,10 +200,21 @@ println:
 	set c, DISPLAY_COLOUR
 1:
 	set a, [j]
+	shr a, 8
+	ife a, 0
+		b 1f
 	bor a, c
+	set [i], a
+	add i, 1
+	set a, [j]
+	and a, 0x7f
+	ife a, 0
+		b 1f
+	bor a, c			
 	sti [i], a
 	ifn [j], 0
 		b 1b
+1:
 	set c, VRAM_AREA+(SCREEN_COLS*SCREEN_ROWS)
 	ife i, c
 		b 1f
@@ -161,7 +237,11 @@ sector_size:	dat 0
 hmd2043_id:		dat 0
 lem1802_id:		dat 0
 
-msg_booting:		dat "MoonOS bootloader", 0
-msg_moonfs:			dat "MoonFS found", 0
-msg_bad_bs_magic:	dat "Unknown BS magic", 0
-msg_readerr:		dat "Read error", 0
+msg_booting:		dat ~"MoonOS bootloader", 0
+msg_moonfs:			dat ~"MoonFS found", 0
+msg_bad_bs_magic:	dat ~"Unknown BS magic", 0
+msg_readerr:		dat ~"Read error", 0
+msg_found:			dat ~"Located kernel", 0
+msg_notfound:		dat ~"Kernel not found", 0
+msg_inode_ok:		dat ~"Kernel inode loaded", 0
+kernel_file:		dat ~"kernel.image", 0

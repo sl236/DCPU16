@@ -1,6 +1,7 @@
 ; Sample boot ROM implementation
 ; Tries all devices until it finds a disk inserted into a drive and successfully reads the first sector.
 ; Transfers control there.
+.shell floppy floppy.img.b64
 
 def BOOTROM_ORIGIN		0
 def BOOTSECTOR_ORIGIN	0xF000
