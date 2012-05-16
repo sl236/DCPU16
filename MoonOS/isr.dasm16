@@ -110,6 +110,13 @@ isr_handle_hmd2043_media:
 	set a, 0								; QUERY_MEDIA_PRESENT
 	hwi [fdd_device_id+y]					; send that	
 	set [fdd_media_present+y], b			; store result
+	ife b, 0								; no media?
+		b isr_handle_hmd2043_exit			; don't need any more info
+	set a, 1								; QUERY_MEDIA_PARAMETERS
+	hwi [fdd_device_id+y]					; send that	
+	set [fdd_sector_size+y], b				; store results
+	set [fdd_sector_count+y], c
+	set [fdd_readonly_media+y], x
 	; drop through
 	
 isr_handle_hmd2043_exit:

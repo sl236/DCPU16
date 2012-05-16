@@ -17,10 +17,11 @@ def fs_dclosedir	0x9 ; z; a: handle
 def fs_stat			0xA	; z; a..b: filepath		on success and if entry exists, returns filesize in X(low), Y(high), file type in B
 def fs_unlink		0xB	; z; a..b: filepath
 def fs_errstr		0xC	; z; a: error code. Returns pointer to compressed human-readable message for error code.
-def fs_api_size		0xD
+def fs_umount		0xD	; z
+def fs_api_size		0xE
 
 def fs_impl_next	0
-def fs_impl_mount	1	; mount takes device id in a, returns FS API instance pointer in B and 0 in A on success, or a nonzero error code in A on failure.
+def fs_impl_mount	1	; mount takes device id (0..3) in a, returns FS API instance pointer in B and 0 in A on success, or a nonzero error code in A on failure.
 
 def fs_filetype_file	inode_type_file
 def fs_filetype_dir		inode_type_dir
@@ -34,14 +35,19 @@ def fs_open_mode_create	8
 ; ----- Filesystem implementations
 def moonfs_fs_api_ptr			0
 def moonfs_fs_device			1
-def moonfs_fs_sector_size		2
-def moonfs_fs_sector_count		3
-def moonfs_fs_memory_handle		4
-def moonfs_fs_instance_size		5
+def moonfs_fs_memory_handle		2
+def moonfs_fs_superblock		3
+def moonfs_fs_root				4
+def moonfs_fs_cache0			5
+def moonfs_fs_cache1			6
+def moonfs_fs_refcount			7
+def moonfs_fs_instance_size		8
 
 def moonfs_success				0
 def moonfs_err_not_implemented	1
-def moonfs_err_bad_magic		2
+def moonfs_err_read				2
+def moonfs_err_write			3
+def moonfs_err_bad_magic		4
 
 moonfs_api:
 	dat moonfs_fopen_impl
@@ -55,13 +61,58 @@ moonfs_api:
 	dat moonfs_dreaddir_impl
 	dat moonfs_dclosedir_impl
 	dat moonfs_stat_impl
+	dat moonfs_umount_impl
 	dat moonfs_errstr
 
 moonfs_mount_impl:
-	set a, moonfs_err_not_implemented	; todo
+	set x, moonfs_fs_instance_size	; FS instance
+	set b, [a+fdd_sector_size]
+	shl b, 2						; and four sectors' worth of memory (ouch)
+	add x, b
+	jsr malloc
+	set b, x						; block handle
+	set b, [y+kerntable_block_start]; its start
+	
+	set [b+moonfs_fs_api_ptr], moonfs_api
+	set [b+moonfs_fs_device], a
+	set [b+moonfs_fs_memory_handle], x
+	set [b+moonfs_fs_refcount], 1
+	
+	set x, b						; FS instance
+	add x, moonfs_fs_instance_size	; start of block memory
+	
+	set [b+moonfs_fs_cache0], x
+	add x, [a+fdd_sector_size]
+	set [b+moonfs_fs_cache1], x
+	add x, [a+fdd_sector_size]
+	set [b+moonfs_fs_superblock], x
+	add x, [a+fdd_sector_size]
+	set [b+moonfs_fs_root], x
+	
+	set push, b
+	
+	set c, [b+moonfs_fs_cache1]	; destination, while we still have b around
+	set a, 0					; boot sector
+	set b, 3					; if it's a moonfs, first three sectors are boot sector, superblock, root inode in that order.
+	jsr fdd_read_impl			; try to read that
+	set z, pop					; get api ptr back
+	ife a, 0					; success?
+		b 1f
+	set a, moonfs_err_read
+	set pc, moonfs_umount_internal
+1:
+	set x, [b+moonfs_fs_superblock]	; superblock ptr
+	ife [x-3], 0x6D6F	; check bootsector magic
+	ife [x-2], 0x6F6E
+	ife [x-1], 0x6673
+		b 1f
+	set a, moonfs_err_bad_magic
+	set pc, moonfs_umount_internal
+1:
+	set a, 0	; it's a moonfs, and z is a valid API instance	
+	set b, z
 	set pc, pop
-
-
+		
 ; --
 moonfs_fopen_impl:
 	set pc, moonfs_not_implemented ; todo
@@ -105,6 +156,16 @@ moonfs_dclosedir_impl:
 ; --
 moonfs_stat_impl:
 	set pc, moonfs_not_implemented ; todo
+
+; --
+moonfs_umount_impl:
+	set a, 0
+moonfs_umount_internal:
+	sub [z+moonfs_fs_refcount], 1
+	ifn [z+moonfs_fs_refcount], 0
+		set pc, pop
+	set x, [z+moonfs_fs_memory_handle]
+	set pc, free
 
 ; --
 moonfs_errstr:
