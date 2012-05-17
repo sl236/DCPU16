@@ -18,7 +18,6 @@ def CLOCK_TICK_RATE			15			; clock rate is (60/CLOCK_TICK_RATE) Hz
 def CURSOR_BLINK_TIME_MASK	0xFFFE		; cursor blinks when (this & time') != time
 def SCREEN_ROWS     		12
 def SCREEN_COLUMNS  		32
-def SCROLL_AMORTISE			4
 def STATUS_ROW				11
 
 ; ----- terminal descriptor
@@ -31,9 +30,7 @@ def term_cursor_ptr			5
 def term_cursor_mask		6
 def term_cursor_tick		7
 def term_waiting_keyproc	8
-def term_vram_start			9
-def term_vram_end			10
-def term_block_handle		11
+def term_block_handle		9
 def term_desc_size			(term_block_handle+1)
 
 def term_alloc_flag_charmap (1<<0)

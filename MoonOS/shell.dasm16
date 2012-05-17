@@ -8,7 +8,7 @@ shell_identifier:
 	dat "shell", 0
 
 shell_greeting:
-	dat "MoonOS 0.1\nLuna City 1985\n\n\n\n\n\n\n\n\n"
+	dat "MoonOS 0.1\nLuna City 1985\n"
 shell_greeting_end: dat 0
   
 shell_prompt_char: 

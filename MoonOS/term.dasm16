@@ -99,7 +99,7 @@ term_alloc:
 	jsr term_release					; release current terminal, if any
 	set z, pop							; get flags back
 	
-	set x, ((SCREEN_ROWS+SCROLL_AMORTISE)*SCREEN_COLUMNS) + term_desc_size	; vram and descriptor
+	set x, (SCREEN_ROWS*SCREEN_COLUMNS) + term_desc_size	; vram and descriptor
 	ifb z, term_alloc_flag_charmap
 		add x, 0x100
 	ifb z, term_alloc_flag_palette
@@ -116,11 +116,10 @@ term_alloc:
 		b 1b
 	set i, [x+kerntable_block_start]	; get terminal descriptor handle back
 	set [i+term_owner], [proclist]		; fill the entries we can
-	set [i+term_vram_start], [i+term_vram_curr]
 	set [i+term_block_handle], x
+	set [i+term_cursor_ptr], [i+term_vram_curr]
 	
-	add b, ((SCREEN_ROWS+SCROLL_AMORTISE)*SCREEN_COLUMNS)	; end of VRAM
-	set [i+term_vram_end], b			; record that
+	add b, (SCREEN_ROWS*SCREEN_COLUMNS)	; end of VRAM
 	ifc z, term_alloc_flag_charmap		; if we got a charmap and/or palette, calculate those addresses
 		set pc, 1f						; otherwise skip over the calculations
 	set [i+term_charmap], b
@@ -157,29 +156,17 @@ term_get_term_desc_x:
 	set x, [x+kernheader_terminal_handle] 		; its terminal descriptor
 	set pc, pop
 
-; ---- scroll one line up; return end of scroll area in i and x
-term_scroll_impl:
+; ---- scroll one line up
+term_scroll:
+	set push, i
+	set push, x
 	jsr term_get_term_desc_x
 	set push, x
 	set i, [x+term_vram_curr]					; start of current VRAM window
+		
+	set j, SCREEN_COLUMNS
+	add j, i				               		; next row down
 	
-	set j, i									; can we amortise the scroll cost by remapping a row down instead?
-	add j, SCREEN_ROWS * SCREEN_COLUMNS	
-	ife j, [x+term_vram_end]
-		b 2f	; we can't
-	
-	; don't scroll, just take the screen start down a row	
-	add i, SCREEN_COLUMNS
-	set [x+term_vram_curr], i
-	add i, (SCREEN_COLUMNS * (STATUS_ROW-2))
-	set x, i	
-	b 3f
-	
-2:	; remap back to start of VRAM	
-	set j, i
-	add j, SCREEN_COLUMNS               		; next row down
-	set i, [x+term_vram_start]					; target is start of whole VRAM area
-	set [x+term_vram_curr], i					; which is now the start of the current VRAM window
 	set x, i
 	add x, (SCREEN_COLUMNS * (STATUS_ROW-2))	; end of scroll area
 
@@ -194,28 +181,15 @@ term_scroll_impl:
 	sti [i], [j]
 	ifn i, x      ; end of area?
 		b 1b        ; no, go around
-				
-3:
-	add x, SCREEN_COLUMNS * 3	; clear rest of screen
-	
-1:
-	sti [i], 0
-	sti [i], 0
-	sti [i], 0
-	sti [i], 0
-	ifn i, x
-		b 1b
-				
-	set x, pop	; get terminal handle back
-	ife x, [screen_curr_terminal]				; if this is the current terminal
-		jsr term_map_current					; update the mapping
-	sub i, SCREEN_COLUMNS * 3					; end of scroll area
-	set x, i
+	set x, pop
+	set [x+term_cursor_ptr], i					; new data can be written here
+	set x, pop
+	set i, pop
 	set pc, pop
 
 ; copy one-word-per-char string in (j..y) to i, orring with c. 
 ; On exit, i is next screen posn after string; j is next source posn after string. 
-; Trashes a.
+; a is last character processed
 term_print_u_ijyc_impl:
 	ife j, y		; source empty?
 		set pc, pop ; skip copy
@@ -253,11 +227,10 @@ term_clear:
 	set push, j
 	set push, x
 	jsr term_get_term_desc_x
-	ife x, [screen_curr_terminal]				; if this is the current terminal
-		jsr term_map_current					; update the mapping
-	set [x+term_vram_curr], [x+term_vram_start]	; reset vram start
-	set i, [x+term_vram_start]					; start of VRAM
-	set x, [x+term_vram_end]					; end of VRAM
+	set i, [x+term_vram_curr]					; start of VRAM
+	set [x+term_cursor_ptr], i					; cursor will end up at start of VRAM
+	set x, i
+	add x, STATUS_ROW * SCREEN_COLUMNS			; not including status row
 
 1:
 	sti [i], 0
@@ -275,34 +248,74 @@ term_clear:
 	set i, pop
 	set pc, pop
 
-; ---- println: prints string held between x and y inclusive
-; ---- using colour in c, on last line before status line; Preserves other registers.
+; ---- print: prints string held between x and y inclusive
+; ---- using colour in c. Preserves other registers.
 ; ---- respects \n character
-term_println:
+term_print:
+	ife x, y					; empty string?
+		set pc, pop				; do nothing
+		
+	set push, x
 	jsr proc_storestate			; store regs
 
 1:
-	jsr term_scroll_impl		; scroll_impl returns bottom row in i, x
-	set j, [sp+storedstate_x]	; source string
-	set y, [sp+storedstate_y]	; end of source string
-
-	set a, y					; end
-	sub a, j					; length
-	ifg (SCREEN_COLUMNS+1), a	; fits on one line?
-		b 2f
+	jsr term_get_term_desc_x			; terminal descriptor
+	set a, [x+term_vram_curr]
+	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
+	
+	set i, [x+term_cursor_ptr]
+	sub a, i							; available space
+	
+	set j, [sp+storedstate_x]
+	set y, [sp+storedstate_y]
+	sub y, j							; length of string we got asked to print
 		
-	set y, j					; just do one line at a time
-	add y, SCREEN_COLUMNS
-2:		
-
+	ifl a, y							; if that's longer than available space
+		set y, a						; only print that much
+	
+	add y, [sp+storedstate_x]			; end of what we can safely print
+	
 	set c, [sp+storedstate_c]	; colour
-	jsr term_print_u_ijyc_impl	; returns next screen position after string in i, progress through source in j
-	set [sp+storedstate_x], j	; note how much we've done	
-	add x, SCREEN_COLUMNS*2		; end of next screen line
-	jsr term_memz_ix_impl		; clear to end
+	jsr term_print_u_ijyc_impl	; print
+	set [x+term_cursor_ptr], i	; new cursor position
+	set [sp+storedstate_x], j	; note how much we've done
+	ifn a, 0xa					; hit a newline?
+		b 2f					; nope
+
+	set a, i					; cursor
+	add a, (SCREEN_COLUMNS-1)	; align to screen row, rounding up
+	and a, ~(SCREEN_COLUMNS-1)
+	ife i, a		; there?
+		b 2f
+3:
+	sti [i], 0	; clear
+	ifn i, a	; end of line?
+		b 3b	; loop
+	
+	jsr term_scroll
+2:	
+	set a, [x+term_vram_curr]
+	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
+	ife [x+term_cursor_ptr], a
+		jsr term_scroll
+	
 	jsr TaskSwitch				; might as well	
 	ifl [sp+storedstate_x], [sp+storedstate_y]	; more lines?
 		set pc, 1b								; print them
 				
 	jsr proc_restorestate		; restore regs			
+	set x, pop
 	set pc, pop					; return
+
+1:  dat 0xa
+; ---- println: as print, but appends a newline
+term_println:
+	jsr term_print
+	set push, x
+	set push, y
+	set x, 1b
+	set y, term_println
+	jsr term_print
+	set y, pop
+	set x, pop
+	set pc, pop
