@@ -40,8 +40,10 @@ def moonfs_fs_superblock		3
 def moonfs_fs_root				4
 def moonfs_fs_cache0			5
 def moonfs_fs_cache1			6
-def moonfs_fs_refcount			7
-def moonfs_fs_instance_size		8
+def moonfs_fs_cache2			7
+def moonfs_fs_cache3			8
+def moonfs_fs_refcount			9
+def moonfs_fs_instance_size		A
 
 def moonfs_success				0
 def moonfs_err_not_implemented	1
@@ -67,7 +69,7 @@ moonfs_api:
 moonfs_mount_impl:
 	set x, moonfs_fs_instance_size	; FS instance
 	set b, [a+fdd_sector_size]
-	shl b, 2						; and four sectors' worth of memory (ouch)
+	mul b, 6						; and six sectors' worth of memory (ouch)
 	add x, b
 	jsr malloc
 	set b, x						; block handle

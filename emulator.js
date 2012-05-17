@@ -293,10 +293,10 @@
                         SetVal(b, bval ? (Math.floor(AsSigned(bval) / AsSigned(aval)) >>> 0) & 0xFFFF : 0, apc, asp);
                         break;
                     case 0x8: // MOD
-                        SetVal(b, bval ? (bval % aval) : 0, apc, asp);
+                        SetVal(b, aval ? (bval % aval) : 0, apc, asp);
                         break;
                     case 0x9: // MDI
-                        SetVal(b, bval ? (AsSigned(bval) % AsSigned(aval)) : 0, apc, asp);
+                        SetVal(b, aval ? (AsSigned(bval) % AsSigned(aval)) : 0, apc, asp);
                         break;
                     case 0xA: // AND
                         SetVal(b, (bval & aval) >>> 0, apc, asp);
