@@ -136,7 +136,7 @@ ich_table:
 1:	dat 'n', 'n', 0, spawn_new_shell
 
 spawn_new_shell:
-	set x, SCREEN_COLUMNS + 0x20	; line buffer and a decent stack
+	set x, SCREEN_COLUMNS + 0x50	; line buffer and a decent stack
   	set push, [proclist]			; push current process handle
   	jsr Fork						; create a process
   	ifn [proclist], pop				; are we the original process?    

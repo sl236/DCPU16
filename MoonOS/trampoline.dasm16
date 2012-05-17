@@ -9,10 +9,10 @@
 
 ; reserved area
 
-.org 0x1e
+.org 0x1d
 	proclist: dat initproc_table	    ; current process table address
 
-; ----- TaskSwitch (0x1f)
+; ----- TaskSwitch (0x1e)
 ; ----- Assumes return address on stack. Preserves sp, nothing else
 .org TaskSwitch
 taskswitch_impl:

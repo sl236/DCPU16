@@ -1,171 +1,65 @@
-            ; define where the screen is
-def screen 0x8000
+def storedstate_a	8
+def storedstate_b	7
+def storedstate_c	6
+def storedstate_x	5
+def storedstate_y	4
+def storedstate_z	3
+def storedstate_i	2
+def storedstate_j	1
+def storedstate_ex	0
 
-            ; i : hardware id counter
-            set i, 0
-            hwn j
-
-:setup ; inspect all connected devices, setup recognized ones
-            ife i, j
-                set pc, main
-            
-            hwq i
-            
-            ; LEM1802 Low Energy Monitor
-            ife b, 0x7349
-            ife a, 0xf615
-                set pc, setup_lem1802
-
-            ; Generic Keyboard (compatible)
-            ife b, 0x30cf
-            ife a, 0x7406
-                set pc, setup_keyboard
-
-            ; Generic Clock (compatible)
-            ife b, 0x12d0
-            ife a, 0xb402
-                set pc, setup_clock
-
-:setup_next
-            add i, 1
-            set pc, setup
-
-
-:lem1802 dat 0x0
-:setup_lem1802
-            set [lem1802], i
-
-            ; set the video buffer
-            set a, 0
-            set b, screen
-            hwi i
-
-            ; draw a border
-            set a, 3
-            set b, 0x9
-            hwi i
-
-            set pc, setup_next
+	set a, 1
+	set b, 2
+	set c, 3
+	set x, 4
+	set y, 5
+	set z, 6
+	set i, 7
+	set j, 8
+	set ex, 9
+	jsr proc_storestate
+	set a, 0xffff
+	set b, 0xffff
+	set c, 0xffff
+	set x, 0xffff
+	set y, 0xffff
+	set z, 0xffff
+	set i, 0xffff
+	set j, 0xffff
+	set ex, 0xffff
+	jsr proc_restorestate
+	sub pc, 1
 
 
-:keyboard dat 0x0
-:setup_keyboard
-            set [keyboard], i
+; stores all regs and EX to stack
+proc_storestate:
+	xor [sp], a		; swap return address and a
+	xor a, [sp]
+	xor [sp], a
+	set push, b
+	set push, c
+	set push, x
+	set push, y
+	set push, z
+	set push, i
+	set push, j
+	set push, ex
+	set push, a						; store return address
+	set a, [sp+storedstate_a+1]		; restore correct a value
+	set pc, pop		
 
-            ; call an interrupt on events with msg 0xdead
-            set a, 3
-            set b, 0xdead
-            hwi i
-
-            set pc, setup_next
-
-
-:clock dat 0x0
-:setup_clock
-            set [clock], i
-
-            ; tick the clock once per second
-            set a, 0
-            set b, 60
-            hwi i
-
-            ; send an interrupt at every tick
-            set a, 2
-            set b, 0xbeef
-            hwi i
-
-            ; draw an x in the top right if the clock is detected
-            set [screen+31], 0x7000 | 'x'
-
-            set pc, setup_next
-
-
-:main
-            ; ISR will handle interrupts
-            ias ISR
-
-            ; i : middle of second row for "XXXX A" display
-            ; b : color mask for "XXXX"
-            set i, 13+32
-            set b, 0x7000
-
-:loop
-            ; check if a key has been pressed
-            set a, 1
-            set c, 0
-            ifn [keyboard], 0
-				hwi [keyboard]
-            ife c, 0
-                set pc, loop
-
-            ; we got a key, draw its hex value
-            jsr draw_hex
-
-            ; and draw the character for the received key
-            bor c, 0x3000
-            set [screen+5+i], c
-
-            set pc, loop
-
-
-            ; count the number of times this interrupt has been called
-:counter dat 0x0
-
-:ISR
-            ; back up some values
-            set push, c
-            set push, i
-            set push, b
-
-            add [counter], 1
-
-            ; draw the interrupt message on 4th row
-            set c, a
-            set i, 13+32*3
-            set b, 0xa000
-            jsr draw_hex
-
-            ; draw the counter on 5th row
-            set c, [counter]
-            set i, 13+32*4
-            set b, 0xc000
-            jsr draw_hex
-
-            ; restore and return
-            set b, pop
-            set i, pop
-            set c, pop
-
-            rfi 0
-
-
-:draw_hex ;write the word in c to [screen+i] with bor mask b
-            set push, j
-            set push, c
-
-            set j, 0
-            add i, 4
-
-:draw_hex_loop
-            ife j, 16
-                set pc, end_draw_hex
-
-            sub i, 1
-            set c, peek
-            shr c, j
-            and c, 0xf
-            ifl c, 0xa
-                add c, '0'
-            ifl c, 0x10
-                add c, 'a'-10
-            bor c, b
-            set [screen+i], c
-            
-            add j, 4
-            set pc, draw_hex_loop
-
-:end_draw_hex
-            set c, pop
-            set j, pop
-            set pc, pop
-
+; restores all regs and EX from stack content created by proc_storestate
+proc_restorestate:
+	set a, pop		; return addr
+	set ex, pop		; restore other regs
+	set j, pop
+	set i, pop
+	set z, pop
+	set y, pop
+	set x, pop
+	set c, pop
+	set b, pop
+	xor [sp], a		; swap return addr and a
+	xor a, [sp]
+	xor [sp], a
+	set pc, pop

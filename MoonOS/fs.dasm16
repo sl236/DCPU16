@@ -33,23 +33,37 @@ def fs_open_mode_trunc 	4
 def fs_open_mode_create	8
 
 ; ----- Filesystem implementations
-def moonfs_fs_api_ptr			0
-def moonfs_fs_device			1
-def moonfs_fs_memory_handle		2
-def moonfs_fs_superblock		3
-def moonfs_fs_root				4
-def moonfs_fs_cache0			5
-def moonfs_fs_cache1			6
-def moonfs_fs_cache2			7
-def moonfs_fs_cache3			8
-def moonfs_fs_refcount			9
-def moonfs_fs_instance_size		0xA
+def moonfs_fs_api_ptr			0x00
+def moonfs_fs_device			0x01
+def moonfs_fs_memory_handle		0x02
+def moonfs_fs_superblock		0x03
+def moonfs_fs_root				0x04
+def moonfs_fs_cache0			0x05
+def moonfs_fs_cache1			0x06
+def moonfs_fs_cache2			0x07
+def moonfs_fs_cache3			0x08
+def moonfs_fs_refcount			0x09
+def moonfs_fs_cache0_sector		0x0A
+def moonfs_fs_cache1_sector		0x0B
+def moonfs_fs_cache2_sector		0x0C
+def moonfs_fs_cache3_sector		0x0D
+def moonfs_fs_cache0_refs		0x0E
+def moonfs_fs_cache1_refs		0x0F
+def moonfs_fs_cache2_refs		0x10
+def moonfs_fs_cache3_refs		0x11
+def moonfs_fs_cache0_lock		0x12
+def moonfs_fs_cache1_lock		0x13
+def moonfs_fs_cache2_lock		0x14
+def moonfs_fs_cache3_lock		0x15
+def moonfs_fs_cache_waiting		0x16
+def moonfs_fs_instance_size		0x17
 
 def moonfs_success				0
 def moonfs_err_not_implemented	1
 def moonfs_err_read				2
 def moonfs_err_write			3
 def moonfs_err_bad_magic		4
+def moonfs_err_fs_unmounted		5
 
 moonfs_api:
 	dat moonfs_fopen_impl
@@ -67,6 +81,13 @@ moonfs_api:
 	dat moonfs_errstr
 
 moonfs_mount_impl:
+	set push, a						; stash argument
+	set z, [a+fdd_mounted_fs]		; currently mounted FS
+	set a, [z]						; API instance
+	ifn z, 0						; was an FS mounted?
+		jsr [a+fs_umount]			; unmount it
+	set a, pop						; restore argument
+	
 	set x, moonfs_fs_instance_size	; FS instance
 	set b, [a+fdd_sector_size]
 	mul b, 6						; and six sectors' worth of memory (ouch)
@@ -79,13 +100,30 @@ moonfs_mount_impl:
 	set [b+moonfs_fs_device], a
 	set [b+moonfs_fs_memory_handle], x
 	set [b+moonfs_fs_refcount], 1
-	
+		
 	set x, b						; FS instance
 	add x, moonfs_fs_instance_size	; start of block memory
+	
+	set [b+moonfs_fs_cache0_sector], 0xffff
+	set [b+moonfs_fs_cache1_sector], 0xffff
+	set [b+moonfs_fs_cache2_sector], 0xffff
+	set [b+moonfs_fs_cache3_sector], 0
+	set [b+moonfs_fs_cache0_refs], 1
+	set [b+moonfs_fs_cache1_refs], 1
+	set [b+moonfs_fs_cache2_refs], 1
+	set [b+moonfs_fs_cache3_refs], 1
+	set [b+moonfs_fs_cache0_lock], 1
+	set [b+moonfs_fs_cache1_lock], 1
+	set [b+moonfs_fs_cache2_lock], 1
+	set [b+moonfs_fs_cache3_lock], 1
 	
 	set [b+moonfs_fs_cache0], x
 	add x, [a+fdd_sector_size]
 	set [b+moonfs_fs_cache1], x
+	add x, [a+fdd_sector_size]
+	set [b+moonfs_fs_cache2], x
+	add x, [a+fdd_sector_size]
+	set [b+moonfs_fs_cache3], x
 	add x, [a+fdd_sector_size]
 	set [b+moonfs_fs_superblock], x
 	add x, [a+fdd_sector_size]
@@ -93,11 +131,21 @@ moonfs_mount_impl:
 	
 	set push, b
 	
-	set c, [b+moonfs_fs_cache1]	; destination, while we still have b around
+	set c, [b+moonfs_fs_cache3]	; destination, while we still have b around
+	set x, [b+moonfs_fs_device]	; target device
+	set [x+fdd_mounted_fs], b	; let other processes know we've grabbed it
 	set a, 0					; boot sector
 	set b, 3					; if it's a moonfs, first three sectors are boot sector, superblock, root inode in that order.
 	jsr fdd_read_impl			; try to read that
 	set z, pop					; get api ptr back
+	sub [z+moonfs_fs_cache0_refs], 1	; cache now available
+	sub [z+moonfs_fs_cache0_lock], 1
+	sub [z+moonfs_fs_cache1_refs], 1
+	sub [z+moonfs_fs_cache1_lock], 1
+	sub [z+moonfs_fs_cache2_refs], 1
+	sub [z+moonfs_fs_cache2_lock], 1
+	sub [z+moonfs_fs_cache3_refs], 1
+	sub [z+moonfs_fs_cache3_lock], 1
 	ife a, 0					; success?
 		b 1f
 	set a, moonfs_err_read
@@ -114,7 +162,153 @@ moonfs_mount_impl:
 	set a, 0	; it's a moonfs, and z is a valid API instance	
 	set b, z
 	set pc, pop
-		
+
+; -- in: API in Z, sector ID in A, lock flag in B.
+;	 out: API in Z, error code in A, memory ptr to filled cache line in B, other regs trashed. May block.
+;    if B is nonzero, cache line is returned locked.
+;    NB if A is 0, cache line in B will be held until passed back to one of moonfs_discard_sector or moonfs_flush_sector
+moonfs_fetch_sector:
+	macro moonfs_check_cache_for_fetch( _cacheline )
+		ifn [z+moonfs_fs_cache0_sector+_cacheline], a	; is this the sector we're looking for?
+			b 1f
+		ifn [z+moonfs_fs_cache0_lock+_cacheline], 0		; is it locked?
+			set pc, moonfs_cache_wait_for_lock
+		set a, 0										; success
+		set b, [z+moonfs_fs_cache0+_cacheline]			; ptr to sector
+		add [z+moonfs_fs_cache0_refs+_cacheline], 1		; claim a reference
+		set pc, pop										; return
+	1:
+	endm
+	moonfs_check_cache_for_fetch( 0 )
+	moonfs_check_cache_for_fetch( 1 )
+	moonfs_check_cache_for_fetch( 2 )
+	moonfs_check_cache_for_fetch( 3 )
+	
+	; couldn't find a usable sector already in the cache
+	; look for a free line
+1:
+	jsr moonfs_check_mounted
+	ifn a, 0
+		set pc, pop
+	set b, z
+	ife [b+moonfs_fs_cache0_refs], 0
+		b 2f
+	add b, 1	
+	ife [b+moonfs_fs_cache0_refs], 0
+		b 2f
+	add b, 1	
+	ife [b+moonfs_fs_cache0_refs], 0
+		b 2f
+	add b, 1	
+	ife [b+moonfs_fs_cache0_refs], 0
+		b 2f
+	jsr moonfs_cache_wait				; wait for a free line
+	set pc, 1b
+2:
+	set [b+moonfs_fs_cache0_sector], a	; store the cache line info
+	add [b+moonfs_fs_cache0_refs], 1
+	add [b+moonfs_fs_cache0_lock], 1
+	set push, z							; save api and line index to stack
+	set push, b
+	set c, [b+moonfs_fs_cache0]			; destination in memory
+	set x, [z+moonfs_fs_device]			; device ID
+	set b, 1							; one sector
+	jsr fdd_read_impl					; read it
+	set z, pop							; get back api, line index
+	set b, pop
+	sub [b+moonfs_fs_cache0_lock], 1	; unlock line
+	ifn [z+moonfs_fs_cache_waiting], 0	; if processes are waiting on the cache
+		jsr moonfs_cache_notify			; let them know
+	set b, [b+moonfs_fs_cache0]			; cache line address
+	set pc, pop							; return to caller
+
+; -- 
+moonfs_cache_wait_for_lock:
+	jsr moonfs_cache_wait
+	set pc, moonfs_fetch_sector
+
+moonfs_cache_wait:
+	set push, z
+	set push, a
+	set push, 3f
+	
+	iaq 1
+	set x, [proclist]
+	set y, [x]
+	jsr dll_delete
+	set [proclist], y
+	ife [z+moonfs_fs_cache_waiting], 0
+		set [z+moonfs_fs_cache_waiting], x
+	set y, [z+moonfs_fs_cache_waiting]
+	jsr dll_splice
+	set [x+kerntable_saved_sp], sp
+	set x, [proclist]
+	set sp, [x+kerntable_saved_sp]
+	iaq 0
+	set pc, pop
+
+3:
+	set a, pop
+	set z, pop
+	set pc, pop	
+
+; --
+moonfs_cache_notify:
+	set push, x
+	set push, y
+	set push, a
+	set push, b
+	set x, [z+moonfs_fs_cache_waiting]
+	set y, [proclist]
+	iaq 1
+	jsr dll_splice
+	iaq 0
+	set [z+moonfs_fs_cache_waiting], 0
+	set b, pop
+	set a, pop
+	set y, pop
+	set x, pop
+	set pc, pop
+
+; -- in: API in Z, memory ptr previously returned by moonfs_claim_sector in B. Cache line is unlocked. Error code in A.
+moonfs_unlock_sector:
+	set a, [z+moonfs_fs_device]
+	set a, [a+fdd_sector_size]
+	sub b, [z+moonfs_fs_cache0]
+	div b, a
+	add b, z
+	set a, 0
+	sub [b+moonfs_fs_cache0_lock], 1
+	ifn [b+moonfs_fs_cache0_lock], 0
+		set pc, pop	
+	ife [z+moonfs_fs_cache_waiting], 0
+		set pc, pop
+	jsr moonfs_cache_notify
+	set a, 0
+	set pc, pop
+
+; -- in: API in Z, memory ptr previously returned by moonfs_claim_sector in B. Cache line is released. Error code in A.
+moonfs_discard_sector:
+	set a, [z+moonfs_fs_device]
+	set a, [a+fdd_sector_size]
+	sub b, [z+moonfs_fs_cache0]
+	div b, a
+	add b, z
+	set a, 0
+	sub [b+moonfs_fs_cache0_refs], 1
+	ifn [b+moonfs_fs_cache0_refs], 0
+		set pc, pop	
+	ife [z+moonfs_fs_cache_waiting], 0
+		set pc, pop
+	jsr moonfs_cache_notify
+	set a, 0
+	set pc, pop
+
+; -- in - z; a: source inode. b: ptr to 7 words of packed chars. out - a: error code. b: (on success) claimed inode cacheline ID. Other regs trashed.
+moonfs_inode_open:
+	
+	set pc, moonfs_not_implemented ; todo
+	
 ; --
 moonfs_fopen_impl:
 	set pc, moonfs_not_implemented ; todo
@@ -163,12 +357,49 @@ moonfs_stat_impl:
 moonfs_umount_impl:
 	set a, 0
 moonfs_umount_internal:
+	set b, z
+	ifn [b+moonfs_fs_cache0_sector], 0xffff
+		jsr moonfs_umount_lock_cache
+	add b, 1
+	ifn [b+moonfs_fs_cache0_sector], 0xffff
+		jsr moonfs_umount_lock_cache
+	add b, 1
+	ifn [b+moonfs_fs_cache0_sector], 0xffff
+		jsr moonfs_umount_lock_cache
+	add b, 1
+	ifn [b+moonfs_fs_cache0_sector], 0xffff
+		jsr moonfs_umount_lock_cache
+	
+	set a, pop
+	set x, [z+moonfs_fs_device]
+	set [x+fdd_mounted_fs], 0
 	sub [z+moonfs_fs_refcount], 1
 	ifn [z+moonfs_fs_refcount], 0
 		set pc, pop
 	set x, [z+moonfs_fs_memory_handle]
 	set pc, free
 
+moonfs_umount_lock_cache:
+	ife [b+moonfs_fs_cache0_refs], 0
+		b 1f
+	set [sp], moonfs_umount_internal
+	set pc, moonfs_cache_wait		
+1:
+	set [b+moonfs_fs_cache0_refs], 1
+	set [b+moonfs_fs_cache0_lock], 1
+	set [b+moonfs_fs_cache0_sector], 0xffff
+	set pc, pop
+
+moonfs_check_mounted:
+	set a, [z+moonfs_fs_device]
+	ifn [a+fdd_mounted_fs], z
+		b 1f
+	set a, 0
+	set pc, pop
+1:
+	set a, moonfs_err_fs_unmounted
+	set pc, pop
+	
 ; --
 moonfs_errstr:
 	set pc, moonfs_not_implemented ; todo

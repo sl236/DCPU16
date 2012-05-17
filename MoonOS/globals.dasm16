@@ -34,4 +34,5 @@ fdd_media_present:		dat 0, 0, 0, 0
 fdd_sector_size:		dat 0, 0, 0, 0
 fdd_sector_count:		dat 0, 0, 0, 0
 fdd_readonly_media:		dat 0, 0, 0, 0
+fdd_mounted_fs:			dat 0, 0, 0, 0
 fdd_completed_ops:		dat 0

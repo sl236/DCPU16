@@ -167,6 +167,19 @@ load('assembler.js');
 
                 Packages.computer.DCPU.testCpu(str.toString().toCharArray());
             }
+            
+            if(Wrapper.options['v'])
+            {
+                Console.Log("labels: ");
+                for(var i in Assembler.LabelResolver.labels)
+                {
+                    var lbl=i.substr(1);
+                    if(lbl.indexOf('$')<0)
+                    {
+                        Console.Log(lbl+": "+Console.H16(Assembler.LabelResolver.labels[i]));
+                    }
+                }
+            }
         }
     }
     else

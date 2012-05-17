@@ -48,7 +48,7 @@ term_map_current:
 	set push, b
 	set x, [screen_curr_terminal]			; current terminal
 	set a, LEM1802_MEM_MAP_SCREEN
-	set b, [x+term_vram]
+	set b, [x+term_vram_curr]
 	hwi [screen_device_id]
 	set a, LEM1802_MEM_MAP_FONT
 	set b, [x+term_charmap]
@@ -99,7 +99,7 @@ term_alloc:
 	jsr term_release					; release current terminal, if any
 	set z, pop							; get flags back
 	
-	set x, 0x180 + term_desc_size		; vram and descriptor
+	set x, ((SCREEN_ROWS+SCROLL_AMORTISE)*SCREEN_COLUMNS) + term_desc_size	; vram and descriptor
 	ifb z, term_alloc_flag_charmap
 		add x, 0x100
 	ifb z, term_alloc_flag_palette
@@ -109,16 +109,18 @@ term_alloc:
 	set i, [x+kerntable_block_start]	; new terminal descriptor
 	set b, i							; calculate vram start
 	add b, term_desc_size
-	sti [i], b							; record that
+	sti [i], b							; store it
 1:
 	sti [i], 0							; most terminal descriptor entries start as zero
 	ifn i, b
 		b 1b
 	set i, [x+kerntable_block_start]	; get terminal descriptor handle back
 	set [i+term_owner], [proclist]		; fill the entries we can
+	set [i+term_vram_start], [i+term_vram_curr]
 	set [i+term_block_handle], x
 	
-	add b, 0x180						; end of VRAM
+	add b, ((SCREEN_ROWS+SCROLL_AMORTISE)*SCREEN_COLUMNS)	; end of VRAM
+	set [i+term_vram_end], b			; record that
 	ifc z, term_alloc_flag_charmap		; if we got a charmap and/or palette, calculate those addresses
 		set pc, 1f						; otherwise skip over the calculations
 	set [i+term_charmap], b
@@ -139,47 +141,50 @@ term_alloc:
 	jsr dll_splice						; insert us just before
 1:
 	set x, [x+kerntable_block_start]	; terminal descriptor
-	set [screen_curr_terminal], x		; we become the current terminal
-	set x, [x+term_vram]				; vram ptr
-	set i, x							; also in i
-	add x, 0x180						; end of vram
-1:
-	sti [i], 0							; clear VRAM
-	sti [i], 0
-	sti [i], 0
-	sti [i], 0
-	ifn i, x
-		b 1b
-	
+	set [screen_curr_terminal], x		; we become the current terminal	
 	set x, [proclist]											; current process
 	set x, [x+kerntable_block_start]							; its header
 	set [x+kernheader_terminal_handle], [screen_curr_terminal]	; it owns this terminal
+	jsr term_clear						; clear VRAM
 	jsr term_map_current				; map us
 	set x, idleproc_table				; idle process handle
 	set pc, taskswitch_to_process		; taskswitch over so it can populate the status line; on resume return to caller
 
-; ---- println: prints string held between x and y inclusive
-; ---- using colour in c, on last line before status line; Preserves other registers.
-term_println:
-	set push, i
-	set push, j
-	set push, x
-	set push, y
-	set push, c
+; ---- get current terminal descriptor in x
+term_get_term_desc_x:
+	set x, [proclist]							; current process
+	set x, [x+kerntable_block_start]			; its header	
+	set x, [x+kernheader_terminal_handle] 		; its terminal descriptor
+	set pc, pop
 
-	; in the shell we have these values available, but let's reacalculate them so this is reusable
-	set i, [proclist]							; current process
-	set i, [i+kerntable_block_start]			; its header	
-	set i, [i+kernheader_terminal_handle] 		; its terminal descriptor
-	set i, [i+term_vram]						; start of VRAM
-  
+; ---- scroll one line up; return end of scroll area in i and x
+term_scroll_impl:
+	jsr term_get_term_desc_x
+	set push, x
+	set i, [x+term_vram_curr]					; start of current VRAM window
+	
+	set j, i									; can we amortise the scroll cost by remapping a row down instead?
+	add j, SCREEN_ROWS * SCREEN_COLUMNS	
+	ife j, [x+term_vram_end]
+		b 2f	; we can't
+	
+	; don't scroll, just take the screen start down a row	
+	add i, SCREEN_COLUMNS
+	set [x+term_vram_curr], i
+	add i, (SCREEN_COLUMNS * (STATUS_ROW-2))
+	set x, i	
+	b 3f
+	
+2:	; remap back to start of VRAM	
 	set j, i
 	add j, SCREEN_COLUMNS               		; next row down
+	set i, [x+term_vram_start]					; target is start of whole VRAM area
+	set [x+term_vram_curr], i					; which is now the start of the current VRAM window
 	set x, i
 	add x, (SCREEN_COLUMNS * (STATUS_ROW-2))	; end of scroll area
 
 1:
-	sti [i], [j]  ; copy to row above
+	sti [i], [j]
 	sti [i], [j]
 	sti [i], [j]
 	sti [i], [j]
@@ -189,32 +194,115 @@ term_println:
 	sti [i], [j]
 	ifn i, x      ; end of area?
 		b 1b        ; no, go around
-  
-	set i, x		; bottom row
-	set j, [sp+2]	; source string
-	set y, [sp+1]	; end of source string
+				
+3:
+	add x, SCREEN_COLUMNS * 3	; clear rest of screen
+	
+1:
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	ifn i, x
+		b 1b
+				
+	set x, pop	; get terminal handle back
+	ife x, [screen_curr_terminal]				; if this is the current terminal
+		jsr term_map_current					; update the mapping
+	sub i, SCREEN_COLUMNS * 3					; end of scroll area
+	set x, i
+	set pc, pop
+
+; copy one-word-per-char string in (j..y) to i, orring with c. 
+; On exit, i is next screen posn after string; j is next source posn after string. 
+; Trashes a.
+term_print_u_ijyc_impl:
 	ife j, y		; source empty?
-		b 2f		; skip copy
+		set pc, pop ; skip copy
+	set push, c
 1:
 	set c, [j]	; fetch character
-	bor c, [sp]	; colour it
+	set a, c	; argh, take a copy
+	and a, 0x7f	; so we can mask it
+	ife a, 0xA	; newline?
+		b 1f	; bail
+	bor c, [sp]	; colour the character
 	sti [i], c	; write it
 	ifn j, y	; reached the end?
 		b 1b	; go around
-2:
-
-	add x, SCREEN_COLUMNS*2	; end of next screen line
-	ife i, x	; there?
-		b 2f	; skip
+	set c, pop
+	set pc, pop	; done	
+1:	; hit a newline
+	add j, 1	; skip over the newline
+	set c, pop
+	set pc, pop	; done
+	
+; zero from i to x
+term_memz_ix_impl:
+	ife i, x		; there?
+		set pc,pop	; done
 1:
-	sti [i], 0	; clear screen
+	sti [i], 0	; clear
 	ifn i, x	; end of line?
 		b 1b	; loop
-2:
+	set pc,pop	; done
+	
+; ---- clear: clears the screen
+term_clear:
+	set push, i
+	set push, j
+	set push, x
+	jsr term_get_term_desc_x
+	ife x, [screen_curr_terminal]				; if this is the current terminal
+		jsr term_map_current					; update the mapping
+	set [x+term_vram_curr], [x+term_vram_start]	; reset vram start
+	set i, [x+term_vram_start]					; start of VRAM
+	set x, [x+term_vram_end]					; end of VRAM
 
-	set c, pop
-	set y, pop
+1:
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	sti [i], 0
+	ifn i, x
+		b 1b
 	set x, pop
 	set j, pop
 	set i, pop
 	set pc, pop
+
+; ---- println: prints string held between x and y inclusive
+; ---- using colour in c, on last line before status line; Preserves other registers.
+; ---- respects \n character
+term_println:
+	jsr proc_storestate			; store regs
+
+1:
+	jsr term_scroll_impl		; scroll_impl returns bottom row in i, x
+	set j, [sp+storedstate_x]	; source string
+	set y, [sp+storedstate_y]	; end of source string
+
+	set a, y					; end
+	sub a, j					; length
+	ifg (SCREEN_COLUMNS+1), a	; fits on one line?
+		b 2f
+		
+	set y, j					; just do one line at a time
+	add y, SCREEN_COLUMNS
+2:		
+
+	set c, [sp+storedstate_c]	; colour
+	jsr term_print_u_ijyc_impl	; returns next screen position after string in i, progress through source in j
+	set [sp+storedstate_x], j	; note how much we've done	
+	add x, SCREEN_COLUMNS*2		; end of next screen line
+	jsr term_memz_ix_impl		; clear to end
+	jsr TaskSwitch				; might as well	
+	ifl [sp+storedstate_x], [sp+storedstate_y]	; more lines?
+		set pc, 1b								; print them
+				
+	jsr proc_restorestate		; restore regs			
+	set pc, pop					; return
