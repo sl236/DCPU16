@@ -86,6 +86,10 @@ Parser.prototype.ParseGrammarLine = function( _line )
             case '$':
                     curr.push( [3, 'EOF'] ); // EOF
                 break;
+
+            case '!':
+                    curr.push( [4,'ACCEPT'] ); // ACCEPT
+                break;
                 
             default:
                     curr.push( [2, token] ); // rule name
@@ -104,9 +108,10 @@ Parser.prototype.ParseGrammarLine = function( _line )
 Parser.prototype.Parse = function( _input, _rule )
 {
     if( !_rule ) { _rule = "START"; }    
-    if( !this.m_grammar[_rule] ) { return [ 0, [ ], _input]; }
+    if( !this.m_grammar[_rule] ) { return [ 0, [ ], _input, 0]; }
+    var accept_seen = false;
         
-    for( var poss = 0; poss < this.m_grammar[_rule][0].length; poss++ )
+    for( var poss = 0; (poss < this.m_grammar[_rule][0].length); poss++ )
     {
         var input = _input;
         var matches = [ ];
@@ -159,7 +164,11 @@ Parser.prototype.Parse = function( _input, _rule )
                         else
                         {
                             fail = true;
-                        }                        
+                            if( r[3] )
+                            {
+                                return [ 0, [ ], _input, accept_seen];
+                            }
+                        }
                     }
                     break;
                     
@@ -167,6 +176,12 @@ Parser.prototype.Parse = function( _input, _rule )
                     {
                         fail = input.length;
                         // if( fail) { window.Console.Log(_rule + ' failed to match EOF: "' + input + '" (' + input.charCodeAt(0) + ')'); }
+                    }
+                    break;
+                    
+                case 4:
+                    {
+                        accept_seen = true;
                     }
                     break;
             }
@@ -183,9 +198,9 @@ Parser.prototype.Parse = function( _input, _rule )
                 }                
                 return r(n);
             }})( this.m_grammar[_rule][1], matches );
-            return [ 1, f, input];
+            return [ 1, f, input, accept_seen];
         }
     }
     
-    return [ 0, [ ], input];
+    return [ 0, [ ], _input, accept_seen];
 }

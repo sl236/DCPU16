@@ -139,11 +139,11 @@
         labelledline: ["justlabels line", function(_m) { return _m[1]; } ],
         justlabels: ["/\\s*/ labels /\\s*/"],
         line: ["/\\s*/ statement /\\s*/ $", function(_m) { return _m[1]; } ],
-        begininclude: ["'.begininclude' /.+/ $", function(_m) { BeginInclude(_m[1]); return 0; } ],
-        endinclude: ["'.endinclude' /.+/ $", function(_m) { EndInclude(_m[1]); return 0; } ],
+        begininclude: ["'.begininclude' ! /.+/ $", function(_m) { BeginInclude(_m[1]); return 0; } ],
+        endinclude: ["'.endinclude' ! /.+/ $", function(_m) { EndInclude(_m[1]); return 0; } ],
         statement: ["basicop | extendedop | directive"],
 
-        basicop: ["basicopname /(,\\s*)?/ boperand /\\s*,?\\s*/ aoperand", function(_m)
+        basicop: ["basicopname ! /(,\\s*)?/ boperand /\\s*,?\\s*/ aoperand", function(_m)
         {
             CountAssembledWords(1);
             return (function(n, b, a)
@@ -173,18 +173,18 @@
             function(_m) { return _m[0]; } ],
         extendedopname: ["/\\b(?:jsr|hcf|int|iag|ias|rfi|iaq|hwn|hwq|hwi)\\b/ /(\\s*,\\s*)?/ /\\s*/", function(_m) { return _m[0]; } ],
 
-        def: ["/[.]?\\bdef\\b\\s*/ identifier /(,\\s*)?/ expression", function(_m)
+        def: ["/[.]?\\bdef\\b\\s*/ ! identifier /(,\\s*)?/ expression", function(_m)
         {
             return Assembler.LabelResolver.labels['$' + _m[1].toLowerCase()] = eval(_m[3][0]);
         }
       ],
 
-        dat: ["/[.]?\\b(dat|dc)\\b\\s*/ data", function(_m) { return _m[1]; } ],
+        dat: ["/[.]?\\b(dat|dc)\\b\\s*/ ! data", function(_m) { return _m[1]; } ],
         data: ["datatuple | dataunit"],
         datatuple: ["dataunit /\\s*,\\s*/ data", function(_m) { return (function(fn0, fn1) { return function() { fn0(); fn1(); } })(_m[0], _m[2]); } ],
         dataunit: ["dataliteral | quotedstring"],
 
-        autobranch: ["/;b\\b\\s*/ expression", function(_m)
+        autobranch: ["/;b\\b\\s*/ ! expression", function(_m)
         {
             CountAssembledWords(1);
             var pc = Assembler.LabelResolver.pc;
@@ -227,7 +227,7 @@
                 function(_m) { CountAssembledWords(1); return (function(expr) { return function() { EmitWord(eval(expr)); } })(_m[0][0]); }
             ],
 
-        quotedstring: ['/~?"/ quotedstringdata /"\\s*/', function(_m) 
+        quotedstring: ['/~?"/ ! quotedstringdata /"\\s*/', function(_m) 
             {
                 var comp = (_m[0].length == 2) ? 1 : 0;
                 CountAssembledWords(comp ? Math.floor((_m[1].length+1)/2): _m[1].length);

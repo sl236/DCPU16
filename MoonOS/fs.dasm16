@@ -43,7 +43,7 @@ def moonfs_fs_cache1			6
 def moonfs_fs_cache2			7
 def moonfs_fs_cache3			8
 def moonfs_fs_refcount			9
-def moonfs_fs_instance_size		A
+def moonfs_fs_instance_size		0xA
 
 def moonfs_success				0
 def moonfs_err_not_implemented	1
