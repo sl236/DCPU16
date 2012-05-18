@@ -264,28 +264,15 @@ term_newline:
 
 ; ---- newline internal implementation: assumes term handle in x; trashes i, j
 term_newline_impl:
+	jsr term_scroll_and_clear_if_end_impl
 	set i, [x+term_cursor_ptr]
-		
+	
 	and [x+term_cursor_ptr], ~(SCREEN_COLUMNS-1)
-	ife i, [x+term_cursor_ptr]
-		b 1f			
 	add [x+term_cursor_ptr], SCREEN_COLUMNS	
 2:
 	sti [i], 0
 	ifn i, [x+term_cursor_ptr]
 		b 2b
-	set pc, term_scroll_and_clear_if_end_impl
-	
-1:
-	set i, [x+term_vram_curr]
-	add i, (STATUS_ROW * SCREEN_COLUMNS)
-	
-	ifg i, [x+term_cursor_ptr]
-		b 1f
-	set pc, term_scroll_and_clear_impl
-	
-1:
-	add [x+term_vram_curr], SCREEN_COLUMNS
 	set pc, term_scroll_and_clear_if_end_impl
 
 ; ---- scroll if cursor at end of terminal

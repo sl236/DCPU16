@@ -10,8 +10,11 @@ shell_identifier:
 shell_greeting:
 	dat ~"MoonOS 0.1\nLuna City 1985\n", 0 
   
-shell_prompt_char: 
-	dat (0x24 | SHELL_COLOUR)
+shell_prompt:
+	dat ~"\r$", 0
+
+shell_fmt_confirm:
+	dat ~"\r$%s\n", 0
 
 ; ---- entrypoint
 shellproc_entry:
@@ -43,30 +46,30 @@ shellproc_entry:
 
 ; ---- shell now initialised; this is the main loop
 shellproc_mainloop: 
+	set x, shell_prompt
+	set c, SHELL_COLOUR
+	jsr term_printf
+	
 	set x, [sp+shell_input_line_termdesc]		; term descriptor
-	set x, [x+term_vram_curr]					; start of VRAM
-	add x, (SCREEN_COLUMNS * (STATUS_ROW-1))	; address of input line in VRAM
-	set [x], [shell_prompt_char]				; prompt
-	add x, 1
-  
+	set x, [x+term_cursor_ptr]
 	set y, [sp+shell_input_line_buffer]			; start of line buffer
 	set z, y									; also end of used area
 	set i, y									; initial cursor posn
 	set j, y									; calculate end of usable area
 	add j, ((SCREEN_COLUMNS-1)-1)				; last usable word (allowing for prompt character)
 		  
-	jsr term_readline		; get a line of input
-	
+	jsr term_readline		; get a line of input	
 	jsr term_sol			; cursor back to start of line
 	
 	; y..z is result
-	set x, y			; need that in x..y
-	set y, z
-	set c, 0x7000		; turn it grey, print and go to next line
-	jsr term_println
-
 	; null terminate the whole string
-	set [y], 0
+	set [z], 0
+	
+	set x, shell_fmt_confirm
+	set push, y
+	set c, 0x7000		; turn it grey, print and go to next line
+	jsr term_printf
+	set x, pop
 
 	set z, shellproc_verb_list		; built-in verbs
 	jsr shellproc_findverb			; check 'em
@@ -133,9 +136,9 @@ shellproc_verb_list:
 		set pc, 3b
 	set pc, pop		
 
-4:	dat ~"proc  size ---- identifier\n", 0;
+4:	dat ~"proc size\n", 0;
 5:  dat "<???>", 0
-6:	dat ~"%x %x ---- %s\n", 0
+6:	dat ~"%x %x %s\n", 0
 
 ; -- freelist
 1:  dat 1f, 2f, ~"freelist", 0
@@ -167,9 +170,41 @@ shellproc_verb_list:
 	set pc, pop		
 
          ;0123456789abcdef0123456789abcdef
-4:	dat ~"block next prev  size start eob\n", 0;
-5:	dat ~"%x: %x %x  %x %x  %x\n", 0;
+4:	dat ~"block next prev  size start eob ", 0;
+5:	dat ~"%x: %x %x  %x %x  %x", 0;
 
-; -- exit
+; -- help
+1:  dat 1f, 2f, ~"help", 0
+1:  dat 1f, 2f, ~"man", 0
+2:  set c, 0x7000
+	set x, 4f
+	jsr term_printf	
+	set z, shellproc_verb_list		; built-in verbs
+3:
+	set z, [z]			; next verb
+	ife z, 0			; out of verbs?
+		set pc, pop		; bail
+		
+	set x, z			; verb data
+	add x, 2			; string is two words in
+	ife [x], 0			; empty?
+		set pc, 3b		; don't display that
+	jsr term_printf		; display it
+	set push, 3b		; return to start of loop
+	set pc, term_newline; newline
+	
+	set pc, pop
+4:	dat ~"Known commands:\n", 0
+
+; -- clear screen
+1:  dat 1f, 2f, ~"clear", 0
+2:  jsr term_clear
+	set pc, pop
+
+; -- empty line
+1:  dat 1f, 2f, 0
+2:  set pc, pop
+
+; -- exit shell
 1:  dat 0, 2f, ~"exit", 0
 2:  set pc, Exit
