@@ -99,7 +99,7 @@ term_alloc:
 	jsr term_release					; release current terminal, if any
 	set z, pop							; get flags back
 	
-	set x, (SCREEN_ROWS*SCREEN_COLUMNS) + term_desc_size	; vram and descriptor
+	set x, ((SCREEN_ROWS+1)*SCREEN_COLUMNS) + term_desc_size	; vram and descriptor. Allow an extra row's worth of memory, to let us row-align VRAM start
 	ifb z, term_alloc_flag_charmap
 		add x, 0x100
 	ifb z, term_alloc_flag_palette
@@ -108,7 +108,9 @@ term_alloc:
 	
 	set i, [x+kerntable_block_start]	; new terminal descriptor
 	set b, i							; calculate vram start
-	add b, term_desc_size
+	add b, term_desc_size				; it's after the descriptor
+	add b, (SCREEN_COLUMNS-1)			; and row-aligned
+	and b, ~(SCREEN_COLUMNS-1)	
 	sti [i], b							; store it
 1:
 	sti [i], 0							; most terminal descriptor entries start as zero
@@ -156,11 +158,8 @@ term_get_term_desc_x:
 	set x, [x+kernheader_terminal_handle] 		; its terminal descriptor
 	set pc, pop
 
-; ---- scroll one line up
-term_scroll:
-	set push, i
-	set push, x
-	jsr term_get_term_desc_x
+; --- scroll terminal one line up; assumes terminal handle in x, trashes i, j
+term_scroll_impl:
 	set push, x
 	set i, [x+term_vram_curr]					; start of current VRAM window
 		
@@ -183,44 +182,8 @@ term_scroll:
 		b 1b        ; no, go around
 	set x, pop
 	set [x+term_cursor_ptr], i					; new data can be written here
-	set x, pop
-	set i, pop
 	set pc, pop
-
-; copy one-word-per-char string in (j..y) to i, orring with c. 
-; On exit, i is next screen posn after string; j is next source posn after string. 
-; a is last character processed
-term_print_u_ijyc_impl:
-	ife j, y		; source empty?
-		set pc, pop ; skip copy
-	set push, c
-1:
-	set c, [j]	; fetch character
-	set a, c	; argh, take a copy
-	and a, 0x7f	; so we can mask it
-	ife a, 0xA	; newline?
-		b 1f	; bail
-	bor c, [sp]	; colour the character
-	sti [i], c	; write it
-	ifn j, y	; reached the end?
-		b 1b	; go around
-	set c, pop
-	set pc, pop	; done	
-1:	; hit a newline
-	add j, 1	; skip over the newline
-	set c, pop
-	set pc, pop	; done
-	
-; zero from i to x
-term_memz_ix_impl:
-	ife i, x		; there?
-		set pc,pop	; done
-1:
-	sti [i], 0	; clear
-	ifn i, x	; end of line?
-		b 1b	; loop
-	set pc,pop	; done
-	
+		
 ; ---- clear: clears the screen
 term_clear:
 	set push, i
@@ -247,75 +210,309 @@ term_clear:
 	set j, pop
 	set i, pop
 	set pc, pop
+	
+; ---- home: moves cursor to start of VRAM
+term_home:
+	set push, i
+	set push, x
+	jsr term_get_term_desc_x
+	set i, [x+term_vram_curr]					; start of VRAM
+	set [x+term_cursor_ptr], i					; cursor will end up at start of VRAM
+	set x, pop
+	set i, pop
+	set pc, pop
 
-; ---- print: prints string held between x and y inclusive
+; ---- SOL: moves cursor to start of current line
+term_sol:
+	set push, x
+	jsr term_get_term_desc_x
+	and [x+term_cursor_ptr], ~(SCREEN_COLUMNS-1)
+	set x, pop
+	set pc, pop
+
+; ---- getcursorpos: returns cursor position in X. First character is at 0, last character is at (SCREEN_ROWS*SCREEN_COLUMNS-1)
+term_getcursorpos:
+	jsr term_get_term_desc_x
+	set x, [x+term_cursor_ptr]
+	sub x, [x+term_vram_curr]
+	set pc, pop
+
+; ---- setcursorpos: sets cursor position in X. First character is at 0, last character is at (SCREEN_ROWS*SCREEN_COLUMNS-1)
+term_setcursorpos:
+	set push, x
+	set push, x
+	jsr term_get_term_desc_x
+1:
+	ifl [sp], (SCREEN_ROWS*SCREEN_COLUMNS)
+		b 1f
+	jsr term_newline
+	sub [sp], SCREEN_COLUMNS
+	b 1b
+1:
+	add [sp], [x+term_vram_curr]
+	set [x+term_cursor_ptr], pop
+	set x, pop
+	set pc, pop
+
+; ---- newline: moves cursor to start of current line
+term_newline:
+	set push, i
+	jsr term_get_term_desc_x
+	jsr term_newline_impl
+	set i, pop
+	set pc, pop
+
+; ---- newline internal implementation: assumes term handle in x; trashes i
+term_newline_impl:
+	set push, x
+	set i, [x+term_vram_curr]
+	add i, (STATUS_ROW * SCREEN_COLUMNS)
+	and [x+term_cursor_ptr], ~(SCREEN_COLUMNS-1)
+	add [x+term_cursor_ptr], SCREEN_COLUMNS
+	ifg i, [x+term_cursor_ptr]
+		b 1f
+		
+	set push, j
+	jsr term_scroll_impl
+	set i, [x+term_cursor_ptr]
+	set x, i
+	add x, SCREEN_COLUMNS
+2:
+	sti [i], 0
+	sti [i], 0
+	ifn i, x
+		b 2b
+	set j, pop
+	
+1:
+	set x, pop
+	set pc, pop
+
+; ---- print: prints string held between x and y
 ; ---- using colour in c. Preserves other registers.
-; ---- respects \n character
+; ---- control chars not treated specially, just get printed
 term_print:
 	ife x, y					; empty string?
-		set pc, pop				; do nothing
-		
+		set pc, pop				; do nothing		
 	set push, x
+	jsr term_get_term_desc_x	; terminal descriptor
+	set push, x
+	set x, [sp+1]
 	jsr proc_storestate			; store regs
+	jsr term_print_impl			; internal implementation	
+	jsr proc_restorestate		; restore regs			
+	set x, pop
+	set x, pop
+	set pc, pop					; return
 
-1:
+; ---- println: as print, but appends a newline
+term_println:
+	set push, x
 	jsr term_get_term_desc_x			; terminal descriptor
+	set push, x
+	set x, [sp+1]
+	jsr proc_storestate			; store regs	
+	ifn x, y					; empty string?
+		jsr term_print_impl			; internal implementation
+	set x, [sp+storedstate_size]	; terminal handle
+	jsr term_newline_impl
+	jsr proc_restorestate		; restore regs			
+	set x, pop
+	set x, pop
+	set pc, pop					; return
+
+; ---- print_z: prints null-terminated string at x
+; ---- using colour in c. Preserves other registers.
+; ---- control chars not treated specially, just get printed
+term_print_z:
+	ife [x], 0			; empty?
+		set pc, pop		; do nothing
+	set push, y
+	set y, x			; find end of string
+1:
+	add y, 1
+	ifn [y], 0
+		b 1b
+		
+	jsr term_print		; term_print can do the honours
+	set y, pop
+	set pc, pop
+
+; ---- println_z: as print_z, but appends a newline.
+term_println_z:
+	ife [x], 0			; empty?
+		set pc, pop		; do nothing
+	set push, y
+	set y, x			; find end of string
+1:
+	add y, 1
+	ifn [y], 0
+		b 1b
+		
+	jsr term_println	; term_println can do the honours
+	set y, pop
+	set pc, pop
+
+; ----		
+; ---- print internal implementation, trashes *all* registers
+; ---- assumes terminal handle at [sp+storedstate_size]
+term_print_impl:
+	set x, [sp+storedstate_size+1]		; terminal handle
 	set a, [x+term_vram_curr]
 	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
 	
 	set i, [x+term_cursor_ptr]
 	sub a, i							; available space
 	
-	set j, [sp+storedstate_x]
-	set y, [sp+storedstate_y]
+	set j, [sp+storedstate_x+1]
+	set y, [sp+storedstate_y+1]
 	sub y, j							; length of string we got asked to print
 		
 	ifl a, y							; if that's longer than available space
 		set y, a						; only print that much
 	
-	add y, [sp+storedstate_x]			; end of what we can safely print
+	add y, [sp+storedstate_x+1]			; end of what we can safely print
 	
-	set c, [sp+storedstate_c]	; colour
-	jsr term_print_u_ijyc_impl	; print
+	set c, [sp+storedstate_c+1]			; colour
+	
+	ife j, y		; source empty?
+		set pc, pop ; skip copy
+	set push, c
+9:
+	set c, [j]	; fetch character
+	bor c, [sp]	; colour the character
+	sti [i], c	; write it
+	ifn j, y	; reached the end?
+		b 9b	; go around
+	set c, pop
+	set pc, pop	; done	
+	
 	set [x+term_cursor_ptr], i	; new cursor position
-	set [sp+storedstate_x], j	; note how much we've done
-	ifn a, 0xa					; hit a newline?
-		b 2f					; nope
-
-	set a, i					; cursor
-	add a, (SCREEN_COLUMNS-1)	; align to screen row, rounding up
-	and a, ~(SCREEN_COLUMNS-1)
-	ife i, a		; there?
-		b 2f
-3:
-	sti [i], 0	; clear
-	ifn i, a	; end of line?
-		b 3b	; loop
+	set [sp+storedstate_x+1], j	; note how much we've done
 	
-	jsr term_scroll
-2:	
 	set a, [x+term_vram_curr]
 	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
 	ife [x+term_cursor_ptr], a
-		jsr term_scroll
+		jsr term_scroll_impl
 	
-	jsr TaskSwitch				; might as well	
-	ifl [sp+storedstate_x], [sp+storedstate_y]	; more lines?
-		set pc, 1b								; print them
+	;jsr TaskSwitch				; might as well	
+	ifl [sp+storedstate_x+1], [sp+storedstate_y+1]	; more lines?
+		set pc, term_print_impl						; print them
 				
-	jsr proc_restorestate		; restore regs			
-	set x, pop
-	set pc, pop					; return
+	set pc, pop					; done
 
-1:  dat 0xa
-; ---- println: as print, but appends a newline
-term_println:
-	jsr term_print
-	set push, x
-	set push, y
-	set x, 1b
-	set y, term_println
-	jsr term_print
-	set y, pop
-	set x, pop
+term_printf_buf:
+	dat 0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,		0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0
+term_printf_buf_end:
+
+def term_printf_locals_size 5 ; +storedstate_size
+def term_printf_stored_x	4+storedstate_size
+def term_printf_param		3+storedstate_size
+def term_printf_word		2+storedstate_size
+def term_printf_byte		1+storedstate_size
+def term_printf_term_handle	0+storedstate_size
+
+; ---- printf: prints packed null-terminated format buffer at x, using arguments held on stack in order from stack top down 
+; ---- (note these are not popped).
+; ---- ASCII control codes are interpreted in format string, but not in arguments.
+term_printf:
+	set push, x							; term_printf_stored_x
+	set push, sp						; term_printf_param
+	add [sp], 1							;	skip return address
+	set push, x							; term_printf_word
+	set push, 0							; term_printf_byte
+	
+	jsr term_get_term_desc_x
+	set push, x							; term_printf_term_handle
+	jsr proc_storestate					; storedstate_size
+
+term_printf_loop:
+	jsr term_printf_unpack	; fetch next char in b
+	set x, [sp+term_printf_term_handle]				; term handle
+	ifl b, 0x20										; control code?
+		set pc, [term_printf_control_handlers+b]	; handle it
+	ifn b, '%'										; format code?
+		b 1f										; nope, ordinary char
+	; handle format code
+	; d, x, u, c, s, w
+	sub pc, 1 ; todo
+	
+1:	; ordinary character
+	bor b, [sp+storedstate_c]			; colour
+	set i, [x+term_cursor_ptr]			; cursor
+	sti [i], b							; store character
+	set [x+term_cursor_ptr], i			; updated cursor
+	
+	set a, [x+term_vram_curr]			; vram start
+	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
+	ife [x+term_cursor_ptr], a			; at end?
+		jsr term_scroll_impl			; scroll
+	set pc, term_printf_loop			; next character
+
+term_printf_control_handlers:
+	dat term_printf_0x00, term_printf_0x01, term_printf_0x02, term_printf_0x03, term_printf_0x04, term_printf_0x05, term_printf_0x06, term_printf_0x07
+	dat term_printf_0x08, term_printf_0x09, term_printf_0x0a, term_printf_0x0b, term_printf_0x0c, term_printf_0x0d, term_printf_0x0e, term_printf_0x0f
+	dat term_printf_0x10, term_printf_0x11, term_printf_0x12, term_printf_0x13, term_printf_0x14, term_printf_0x15, term_printf_0x16, term_printf_0x17
+	dat term_printf_0x18, term_printf_0x19, term_printf_0x1a, term_printf_0x1b, term_printf_0x1c, term_printf_0x1d, term_printf_0x1e, term_printf_0x1f
+		
+; trashes a. returns next char in b.		
+term_printf_unpack:
+	set a, [sp+term_printf_word+1]
+	set b, [a]
+	set y, [sp+term_printf_byte+1]
+	ife y, 0
+		shr b, 8
+	and b, 0x7f
+	xor y, 1
+	ife y, 0
+		add [sp+term_printf_word+1], 1
+	set [sp+term_printf_byte+1], y
 	set pc, pop
+
+term_printf_0x00:	; NUL = done
+	jsr TaskSwitch					; yield
+	jsr proc_restorestate			; restore regs			
+	add sp, term_printf_locals_size	; drop locals
+	set pc, pop						; return to caller
+
+term_printf_0x08:	; BS
+	set a, [x+term_cursor_ptr]
+	and a, ~(SCREEN_COLUMNS-1)
+	ifn a, [x+term_cursor_ptr]
+		sub [x+term_cursor_ptr], 1
+	set pc, term_printf_loop
+
+term_printf_0x09:	; TAB
+	set a, [x+term_cursor_ptr]
+	set b, a
+	add a, (SCREEN_COLUMNS-1)
+	and a, ~(SCREEN_COLUMNS-1)
+	add b, 4
+	and b, ~3
+	ifg b, a
+		set b, a
+	set [x+term_cursor_ptr], b
+	set pc, term_printf_loop
+
+term_printf_0x0a:	; LF (\n)
+	jsr term_newline_impl
+	set pc, term_printf_loop
+	
+term_printf_0x0c:	; FF (new page)
+	jsr term_clear
+	set pc, term_printf_loop
+	
+term_printf_0x0d:	; CR (no newline)
+	and [x+term_cursor_ptr], ~(SCREEN_COLUMNS-1)
+	set pc, term_printf_loop
+	
+; otherwise unhandled control chars
+term_printf_0x01:	term_printf_0x02:	term_printf_0x03:	term_printf_0x04:
+					term_printf_0x05:	term_printf_0x06:	term_printf_0x07:
+															term_printf_0x0b:
+										term_printf_0x0e:	term_printf_0x0f:
+term_printf_0x10:	term_printf_0x11:	term_printf_0x12:	term_printf_0x13:
+term_printf_0x14:	term_printf_0x15:	term_printf_0x16:	term_printf_0x17:
+term_printf_0x18:	term_printf_0x19:	term_printf_0x1a:	term_printf_0x1b:
+term_printf_0x1c:	term_printf_0x1d:	term_printf_0x1e:	term_printf_0x1f:
+	set pc, term_printf_loop

@@ -8,8 +8,7 @@ shell_identifier:
 	dat "shell", 0
 
 shell_greeting:
-	dat "MoonOS 0.1\nLuna City 1985\n"
-shell_greeting_end: dat 0
+	dat ~"MoonOS 0.1\nLuna City 1985\n", 0 
   
 shell_prompt_char: 
 	dat (0x24 | SHELL_COLOUR)
@@ -25,10 +24,8 @@ shellproc_entry:
 	jsr term_alloc
 
 	set x, shell_greeting
-	set y, shell_greeting_end
 	set c, 0x2000		; colour
-	jsr term_println	; populate screen
-													
+	jsr term_printf		; populate screen		
 												; input is displayed on row above status line
 	set z, [proclist]							; current process
 	set z, [z+kerntable_block_start]			; its header	

@@ -65,7 +65,6 @@ readch_reentry:
 ; -------------------------------------------------
 ; ReadLine
 ;
-; x: VRAM offset
 ; y: input buffer address of start
 ; z: input buffer address of current EOL
 ; i: input buffer address of end of usable area

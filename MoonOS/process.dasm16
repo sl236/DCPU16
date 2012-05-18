@@ -144,15 +144,16 @@ rpccall_reentry:
 	set a, pop							; process that was called
 	set pc, pop							; return to caller
 
-def storedstate_a	8
-def storedstate_b	7
-def storedstate_c	6
-def storedstate_x	5
-def storedstate_y	4
-def storedstate_z	3
-def storedstate_i	2
-def storedstate_j	1
-def storedstate_ex	0
+def storedstate_size	9
+def storedstate_a		8
+def storedstate_b		7
+def storedstate_c		6
+def storedstate_x		5
+def storedstate_y		4
+def storedstate_z		3
+def storedstate_i		2
+def storedstate_j		1
+def storedstate_ex		0
 
 ; stores all regs and EX to stack
 proc_storestate:
