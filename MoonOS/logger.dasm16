@@ -13,15 +13,18 @@ logger_entry:
 	; allocate a terminal
 	set a, 0			; no particular requirements
 	jsr term_alloc		;
-	
-	set push, 0			; initially no process is waiting for RPC to complete
 
+	; TODO
 1:
-	set a, pop									; waiting process
-	jsr rpcwait_impl							; wake and wait for an RPC call
-	set push, a									; store source process handle
-	set x, b									; start of line
-	set y, c									; end of line
-	set c, 0x7000								; colour
-	jsr term_println							; display
-	b 1b										; loop
+	; suspend self
+	set x, [proclist]
+	set y, [x]
+	iaq 1
+	jsr dll_delete
+	; todo - need to splice x somewhere, otherwise we just leak
+	set push, 1b
+	set [x+kerntable_saved_sp], sp
+	set sp,	[y+kerntable_saved_sp]
+	set [proclist], y
+	iaq 0
+	set pc, pop

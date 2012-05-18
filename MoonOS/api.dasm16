@@ -10,8 +10,6 @@ def ReadChar		    0x04	; line input to be written in terms of this, its code hel
 ; candidates for exposing:
 ; malloc
 ; free
-; rpccall
-; rpcwait
 ; term_alloc
 ; term_release
 ; term_println

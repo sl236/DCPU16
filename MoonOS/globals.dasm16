@@ -5,11 +5,6 @@ freelist:		dat freemem_first		; freelist next pointer
 				dat freemem_last		; freelist prev pointer
 				dat freelist			; freelist head block start
 
-rpchandlerlist_data:	dat 0, rpchandlerlist_data														
-rpchandlerlist:			dat rpchandlerlist
-						dat rpchandlerlist
-						dat rpchandlerlist_data
-
 freemem_size:			dat 0
 
 screen_device_id:		dat 0xffff

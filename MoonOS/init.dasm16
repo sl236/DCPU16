@@ -134,7 +134,7 @@ init_hw_end:
 		sub pc, 1           			; if not, we don't know how to continue.
 
   	; fork a logger  
-	set x, SCREEN_COLUMNS + 0x20	; line buffer and a decent stack
+	set x, 0x50						; a decent-sized stack
   	set push, [proclist]			; push current process handle
   	jsr Fork						; create a process
   	ifn [proclist], pop				; are we the original process?    
@@ -143,17 +143,9 @@ init_hw_end:
 	jsr spawn_new_shell				; fork a shell
   	jsr TaskSwitch					; give those a chance to initialise
   	
-  	set a, logger_identifier		; logger greeting message
-  	set b, init_message
-  	set c, init_message_end
-  	jsr rpccall_impl
-  	
 	set pc, Exit            		; exit, releasing this memory to the system   
 
-init_message:	dat "System log"
-init_message_end:
-
-	RESERVE_WORDS( 0x20 )	; stack
+	RESERVE_WORDS( 0x40 )	; stack
   
 initproc_table:
   dat idleproc_table    ; next

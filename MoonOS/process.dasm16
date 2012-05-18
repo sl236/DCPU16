@@ -59,90 +59,8 @@ fork_impl:
   iaq 0				  ; end critical section
   set pc, pop         ; we're done
 
-; ----- WaitForRPCCall
-; ----- This process is suspended until another process sends it an RPC call.
-; ----- On entry, if A is nonzero, it is assumed to be a process handle for a previously suspended process; 
-; ----- that process is woken.
-; ----- On return, A contains the calling process handle; 
-; ----- B and C are as they were in the calling process; 
-; ----- all other register content is undefined.
-rpcwait_impl:
-	set z, a						; preserve input	
-	set x, [proclist]				; current process
-	set [x+kerntable_saved_sp], sp	; current stack pointer
-	
-	iaq 1							; critical section
-	set push, [x]					; next process in active list
-	jsr dll_delete					; remove from active list
-	set y, [rpchandlerlist]			; rpc handler list
-	jsr dll_splice					; add self there	
-	set y, pop						; next process
 
-	ife z, 0						; if we weren't told to wake up a process
-		b 1f						; skip waking one up
-	set x, z						; the process we were asked to wake up
-	jsr dll_splice					; splice it into the active list
-	set y, x						; and make it the one we switch to
-1:
-
-	set [proclist], y				; new process now active
-	set sp, [y+kerntable_saved_sp]	; next process's sp
-	iaq 0							; end of critical section
-	set pc, pop						; done here	
-	
-; ----- PerformRPCCall
-; ----- A points to a null-terminated string. 
-; ----- The set of processes currently in a WaitForRPCCall is searched for a matching identifier.
-; ----- If one is found, that process is called (see WaitForRPCCall) with the contents of the B and C registers,
-; ----- and the current process is suspended until the target reenters the RPC call wait state. 
-; ----- On return, A is the process handle for the process that was called, or 0 if no match was found.
-rpccall_impl:
-	set push, a							; save target name ptr on stack
-	set x, [rpchandlerlist]				; get first handler
-	ife x, rpchandlerlist				; out of handlers?
-		b rpccall_fail					; can't call any
-1:
-	set i, [sp]							; fetch target name ptr
-	set j, [x+kerntable_block_start]	; candidate handler process table
-	set j, [j+kernheader_identifier]	; its identifier
-	set a, 0							; assume no match
-	ifn j, 0							; if there's an identifier,
-		jsr strcmp						; compare it
-	ifn a, 0							; if there was a match
-		b rpccall_match					; deal with it
-			
-	set x, [x]							; next handler
-	ifn x, rpchandlerlist				; out of handlers?
-		b 1b							; go around
-			
-rpccall_fail:
-	set a, pop							; don't need target name on stack any more
-	set a, 0							; report failure to caller
-	set pc, pop							; return
-	
-rpccall_match:							; found a matching handler, it is in X
-	set [sp], x							; replace target name ptr with handler
-	set push, b							; stash first argument (dll_* trash b)
-	iaq 1								; critical section
-	set x, [proclist]					; current process handle
-	set y, [x]							; next active process
-	jsr dll_delete						; remove it from active process list
-	set z, x							; stash it in z
-	set x, [sp+1]						; target process handle
-	jsr dll_delete						; remove from available RPC handlers
-	jsr dll_splice						; insert immediately before next active process
-	set b, pop							; restore B
-	set a, z							; source process handle in A	
-	set push, rpccall_reentry			; we come back here
-	set [z+kerntable_saved_sp], sp		; store our sp
-	set [proclist], x					; target now live
-	set sp, [x+kerntable_saved_sp]		; fetch target process sp
-	iaq 0								; end critical section
-	set pc, pop							; reenter target process
-
-rpccall_reentry:
-	set a, pop							; process that was called
-	set pc, pop							; return to caller
+; ------------------------------------------------------------------------
 
 def storedstate_size	9
 def storedstate_a		8
@@ -170,10 +88,11 @@ proc_storestate:
 	set push, ex
 	set push, a						; store return address
 	set a, [sp+storedstate_a+1]		; restore correct a value
-	set pc, pop		
+	set pc, pop	
 
 ; restores all regs and EX from stack content created by proc_storestate
 proc_restorestate:
+	jsr TaskSwitch	; any time we do an operation long enough to store all registers, a taskswitch is justified
 	set a, pop		; return addr
 	set ex, pop		; restore other regs
 	set j, pop

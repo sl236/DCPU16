@@ -20,23 +20,23 @@ shellproc_entry:
 	set [x+kernheader_identifier], shell_identifier	; set the process identifier
 	
 	; allocate a terminal for this shell
-	set a, 0			; no particular requirements
+	set a, 0										; no particular requirements
 	jsr term_alloc
 
 	set x, shell_greeting
-	set c, 0x2000		; colour
-	jsr term_printf		; populate screen		
-												; input is displayed on row above status line
-	set z, [proclist]							; current process
-	set z, [z+kerntable_block_start]			; its header	
-	set z, [z+kernheader_terminal_handle] 		; its terminal descriptor
+	set c, 0x2000									; colour
+	jsr term_printf									; populate screen		
+													; input is displayed on row above status line
+	set z, [proclist]								; current process
+	set z, [z+kerntable_block_start]				; its header	
+	set z, [z+kernheader_terminal_handle] 			; its terminal descriptor
 
-												; locate our line buffer immediately after the process header
-	set y, [proclist]							; current process
-	set y, [y+kerntable_block_start]			; its header
-	add y, kernheader_size						; the header's size is the start of the line buffer
+													; locate our line buffer immediately after the process header
+	set y, [proclist]								; current process
+	set y, [y+kerntable_block_start]				; its header
+	add y, kernheader_size							; the header's size is the start of the line buffer
 
-	set push, z									; store those
+	set push, z										; store those
 	set push, y	
 	def shell_input_line_termdesc	1
 	def shell_input_line_buffer		0
@@ -57,10 +57,12 @@ shellproc_mainloop:
 		  
 	jsr term_readline		; get a line of input
 	
+	jsr term_sol			; cursor back to start of line
+	
 	; y..z is result
 	set x, y			; need that in x..y
 	set y, z
-	set c, 0x7000		; turn it grey, print and scroll up
+	set c, 0x7000		; turn it grey, print and go to next line
 	jsr term_println
 
 	; null terminate the whole string
@@ -73,9 +75,8 @@ shellproc_mainloop:
 
 	; no match found
 	set x, shellproc_no_verb_match_message
-	set y, shellproc_no_verb_match_message_len ; see below
 	set c, 0x4000
-	jsr term_println
+	jsr term_printf
 	set pc, shellproc_mainloop
 	
 ; ---- check verb list in z against string in x..y
@@ -88,198 +89,87 @@ shellproc_findverb:
 	ife z, 0			; out of verbs?
 		set pc, pop		; bail
 		
-	set i, z			; verb data
-	add i, 2			; string is two words in
-	set j, x			; what the user typed
-	jsr strcmp			; compare those
-	ife a, 0			; not a match?
+	set a, z			; verb data
+	add a, 2			; string is two words in
+	set i, x			; what the user typed
+	jsr strcmp_ia		; compare those
+	ifn a, 0			; not a match?
 		b 1b			; go around
 	jsr [z+1]			; call handler
 	set z, 1			; signal success	
 	set pc, pop			; return
 	
 	
-shellproc_no_verb_match_message:		dat "command not found"	
-shellproc_no_verb_match_message_len:	dat shellproc_no_verb_match_message_len - shellproc_no_verb_match_message
-
-hello_message:		dat "hello world"
-hello_message_end:
+shellproc_no_verb_match_message:		dat ~"command not found\n", 0
 
 ; ---- builtins
 shellproc_verb_list:
 	dat 1f	
 
 ; -- ps
-1:  dat 1f, 2f, "ps", 0
+1:  dat 1f, 2f, ~"ps", 0
 2:  set z, [proclist]
-	
+
 	set x, 4f
-	set y, 4f + 32
 	set c, 0x7000
-	jsr term_println
-	
-	set x, [sp+shell_input_line_buffer+2]
-			
-3:	
-	set c, 0
-	set b, x
-	set a, z
-	jsr format_hex
-	set [b+4], ':'
-	set [b+5], 0x20	
-	add b, 6
-	
+	jsr term_printf
+
+3:
+	set x, 6f	
+	set a, [z+kerntable_block_start]
+	set a, [a+kernheader_identifier]
+	ife a, 0
+		set a, 5f
+	set push, a
 	set a, z
 	sub a, [z+kerntable_block_start]	
-	jsr format_hex
-	set [b+4], 0x20
-	add b, 5
-	
-	set [b+0], '-'
-	set [b+1], '-'
-	set [b+2], '-'
-	set [b+3], '-'
-	set [b+4], 0x20
-	add b, 5
-	
-	set i, [z+kerntable_block_start]
-	set i, [i+kernheader_identifier]
-	ife i, 0
-		set i, 5f
-	set j, b
-	jsr strcpy
-	set y, j
-	set c, 0x7000
-	jsr term_println
+	set push, a
 	set push, z
-	jsr TaskSwitch
-	set z, pop
+	jsr term_printf
+	add sp, 3
+	
 	set z, [z]
 	ifn z, [proclist]
 		set pc, 3b
 	set pc, pop		
 
-		;0123456789abcdef0123456789abcdef
-4:	dat "proc  size ---- identifier      ";
+4:	dat ~"proc  size ---- identifier\n", 0;
 5:  dat "<???>", 0
+6:	dat ~"%x %x ---- %s\n", 0
 
 ; -- freelist
-1:  dat 1f, 2f, "freelist", 0
+1:  dat 1f, 2f, ~"freelist", 0
 2:  set z, freelist
 	
 	set x, 4f
-	set y, 4f + 32
 	set c, 0x7000
-	jsr term_println
-	
-	set x, [sp+shell_input_line_buffer+2]
-			
-3:	
-	set c, 0
-	set b, x
-	set a, z
-	jsr format_hex
-	set [b+4], ':'
-	set [b+5], 0x20	
-	add b, 6
-	
-	set a, [z+kerntable_next]
-	jsr format_hex
-	set [b+4], 0x20
-	add b, 5
-	
-	set a, [z+kerntable_prev]
-	jsr format_hex
-	set [b+4], 0x20
-	set [b+5], 0x20
-	add b, 6
-	
-	set a, z
-	sub a, [z+kerntable_block_start]	
-	jsr format_hex
-	set [b+4], 0x20
-	add b, 5
-	
-	set a, [z+kerntable_block_start]
-	jsr format_hex
-	set [b+4], 0x20
-	add b, 5
+	jsr term_printf	
 
+3:
 	set a, z
 	add a, kerntable_size
-	jsr format_hex
-	set [b+4], 0x20
-	add b, 5
-			
-	set y, b
-	set c, 0x7000
-	jsr term_println
-	set push, z
-	jsr TaskSwitch
-	set z, pop
-	set z, [z]
+	set push, a
+	set push, [z+kerntable_block_start]
+	set a, z
+	sub a, [z+kerntable_block_start]
+	set push, a
+	set push, [z+kerntable_prev]
+	set push, [z+kerntable_next]
+	set push, z	
+	
+	set x, 5f
+	jsr term_printf
+	add sp, 6
+	
+	set z, [z+kerntable_next]
 	ifn z, freelist
 		set pc, 3b
 	set pc, pop		
 
-		;0123456789abcdef0123456789abcdef
-4:	dat "block next prev  size start eob ";
+         ;0123456789abcdef0123456789abcdef
+4:	dat ~"block next prev  size start eob\n", 0;
+5:	dat ~"%x: %x %x  %x %x  %x\n", 0;
 
 ; -- exit
-1:  dat 1f, 2f, "exit", 0
+1:  dat 0, 2f, ~"exit", 0
 2:  set pc, Exit
-
-; -- hello
-1:  dat 0, 2f, "hello", 0
-2:	set x, hello_message
-	set y, hello_message_end
-	set c, 0x2C80
-	jsr term_println
-	set x, 0x240
-  	set push, [proclist]			; push current process handle
-  	jsr Fork						; create a process
-  	ife [proclist], pop				; are we the original process?    		
-		set pc, pop
-		
-	; FDD test
-	; attempt to read the first sector, and dump the first 32 bytes to system log
-	set a, 0
-	set b, 1
-	set c, [proclist]
-	set c, [c+kerntable_block_start]
-	add c, kernheader_size
-	set push, c
-	set x, 0
-	jsr fdd_read_impl
-	set c, 0
-	set b, 3f
-	jsr format_hex
-	set b, 2f
-	set c, 4f
-	ifn a, 0
-		b 1f
-	set b, pop
-	set c, b
-	add c, 16
-	set i, c
-	set j, c
-	add j, 15
-9:
-	set a, [i-1]
-	set [j], a
-	and [j], 0x7f
-	shr a, 8
-	and a, 0x7F
-	sub j, 1
-	std [j], a
-	ifg i, b
-		b 9b
-	add c, 16
-1:
-	set a, logger_identifier
-	jsr rpccall_impl		
-	set pc, Exit
-
-2:  dat "Failed to read sector (error "
-3:  dat "0000)"
-4:  

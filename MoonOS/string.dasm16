@@ -32,62 +32,49 @@ format_hex:
   
 format_hex_data: dat "0123456789ABCDEF"
 
-; ----- strcpy  
-;  copies null-terminated string at I to J, orring C with each character. 
-; I, J point to end of string on exit. Terminating null is not copied. A is zeroed.
-strcpy:
-  set a, [i]    
-  ife a, 0
-    set pc, pop
-  bor a, C
-  sti [j], a
-  b strcpy
-
 ; ----- strcmp
-; Compares null-terminated strings I and J. Returns 1 in a if they match, 0 otherwise. 
-; I and J advanced to terminating null, or first character that differs.
+; Compares null-terminated strings I and J. Returns 0 in A if they match, a signed value suitable for ordering otherwise
+; Strings are assumed to be terminated with an entire 0 word, and either both packed or neither packed.
+; I and J are advanced to terminating word, or first word that differs.
 strcmp:
-	set a, 0			; assume failure
-1:
 	ifn [i], [j]		; characters don't match?
-		set pc, pop		; failure
-	sti a, a			; use for side effect, cheaper than two adds
-	ifn [i], 0			; I has more characters?
-		b 1b			; check 'em
-	ife [j], 0			; J also finished?
-		set a, 1		; that's a match
-	set pc, pop			; return
+		b strcmp_done
+	ife [i], 0
+		b strcmp_done
+	sti pc, strcmp
 
-; ----- stricmp
-; Compares null-terminated strings I and J, ignoring case. Returns 1 in a if they match, 0 otherwise. 
-; I and J advanced to terminating null, or first character that differs.
-stricmp:
-	jsr strcmp			; case sensitive compare
-	ife a, 1			; success?
-		set pc, pop		; pass that on
-	set a, [i]			; fetch a character
-	ifl a, 'A'			; before A?
-		b 1f			; can't possibly match
-	and a, ~0x20		; map lower-case range to upper case
-	ifg a, 'Z'			; after Z?
-		b 1f			; can't possibly match
-	xor a, [j]			; before the xor, A contains a code in the range 'A'..'Z'
-	and a, ~0x20		; 'a' == ('A' + 0x20)
-	ifn a, 0			; if other bits differ
-		b 1f			; that's a real failure
-	sti a, 0			; case insensitive match. Skip over these characters
-	b stricmp			; and carry on comparing
+strcmp_done:
+	set a, [i]
+	sub a, [j]
+	set pc, pop
+
+; ----- strcmp_ia
+; Compares null-terminated strings I and A. Returns 0 in A if they match, a signed value suitable for ordering otherwise
+; I is assumed to be one word per character; A is treated as a packed string.
+; I is advanced to terminating null, or first character that differs.
+strcmp_ia:
+	set push, j			; preserve j
+	set push, x			; and x
+	set x, a
+	set a, [x]
 1:
-	set a, 0			; signal failure
+	shr a, 8
+	ifn [i], a			; characters don't match?
+		b strcmp_ia_done
+	ife [i], 0
+		b strcmp_ia_done
+	sti a, [x]
+	and a, 0x7f
+	ifn [i], a			; characters don't match?
+		b strcmp_ia_done
+	ife [i], 0
+		b strcmp_ia_done
+	add x, 1
+	sti a, [x]
+	b 1b
+
+strcmp_ia_done:
+	sub a, [i]
+	set x, pop			; restore regs
+	set j, pop
 	set pc, pop			; return
-	
-; ----- strlen
-; Returns in J length of the null-terminated string in I.
-; I advanced to terminating null.
-strlen:
-	set j, 0			; character count
-1:
-	ife [i], 0			; end of string?
-		set pc, pop		; we're done here.
-	sti i, i			; used for the side effect
-	b 1b				; next character

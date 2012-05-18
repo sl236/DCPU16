@@ -167,7 +167,7 @@ term_scroll_impl:
 	add j, i				               		; next row down
 	
 	set x, i
-	add x, (SCREEN_COLUMNS * (STATUS_ROW-2))	; end of scroll area
+	add x, (SCREEN_COLUMNS * (STATUS_ROW-1))	; end of scroll area
 
 1:
 	sti [i], [j]
@@ -262,17 +262,42 @@ term_newline:
 	set i, pop
 	set pc, pop
 
-; ---- newline internal implementation: assumes term handle in x; trashes i
+; ---- newline internal implementation: assumes term handle in x; trashes i, j
 term_newline_impl:
-	set push, x
+	set i, [x+term_cursor_ptr]
+		
+	and [x+term_cursor_ptr], ~(SCREEN_COLUMNS-1)
+	ife i, [x+term_cursor_ptr]
+		b 1f			
+	add [x+term_cursor_ptr], SCREEN_COLUMNS	
+2:
+	sti [i], 0
+	ifn i, [x+term_cursor_ptr]
+		b 2b
+	set pc, term_scroll_and_clear_if_end_impl
+	
+1:
 	set i, [x+term_vram_curr]
 	add i, (STATUS_ROW * SCREEN_COLUMNS)
-	and [x+term_cursor_ptr], ~(SCREEN_COLUMNS-1)
-	add [x+term_cursor_ptr], SCREEN_COLUMNS
+	
 	ifg i, [x+term_cursor_ptr]
 		b 1f
-		
-	set push, j
+	set pc, term_scroll_and_clear_impl
+	
+1:
+	add [x+term_vram_curr], SCREEN_COLUMNS
+	set pc, term_scroll_and_clear_if_end_impl
+
+; ---- scroll if cursor at end of terminal
+term_scroll_and_clear_if_end_impl:		
+	set i, [x+term_vram_curr]
+	add i, (STATUS_ROW * SCREEN_COLUMNS)
+	
+	ifg i, [x+term_cursor_ptr]
+		set pc, pop
+	; drop through
+term_scroll_and_clear_impl:				
+	set push, x
 	jsr term_scroll_impl
 	set i, [x+term_cursor_ptr]
 	set x, i
@@ -280,11 +305,10 @@ term_newline_impl:
 2:
 	sti [i], 0
 	sti [i], 0
+	sti [i], 0
+	sti [i], 0
 	ifn i, x
-		b 2b
-	set j, pop
-	
-1:
+		b 2b		
 	set x, pop
 	set pc, pop
 
@@ -357,7 +381,9 @@ term_println_z:
 ; ---- print internal implementation, trashes *all* registers
 ; ---- assumes terminal handle at [sp+storedstate_size]
 term_print_impl:
-	set x, [sp+storedstate_size+1]		; terminal handle
+	set x, [sp+storedstate_size+1]			; terminal handle
+	jsr term_scroll_and_clear_if_end_impl	; need to scroll?
+	
 	set a, [x+term_vram_curr]
 	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
 	
@@ -376,36 +402,26 @@ term_print_impl:
 	set c, [sp+storedstate_c+1]			; colour
 	
 	ife j, y		; source empty?
-		set pc, pop ; skip copy
-	set push, c
+		b 1f		; skip copy
 9:
-	set c, [j]	; fetch character
-	bor c, [sp]	; colour the character
-	sti [i], c	; write it
+	set a, [j]	; fetch character
+	bor a, c	; colour the character
+	sti [i], a	; write it
 	ifn j, y	; reached the end?
 		b 9b	; go around
-	set c, pop
-	set pc, pop	; done	
-	
-	set [x+term_cursor_ptr], i	; new cursor position
-	set [sp+storedstate_x+1], j	; note how much we've done
-	
-	set a, [x+term_vram_curr]
-	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
-	ife [x+term_cursor_ptr], a
-		jsr term_scroll_impl
-	
-	;jsr TaskSwitch				; might as well	
+
+1:
+	set [x+term_cursor_ptr], i						; new cursor position
+	set [sp+storedstate_x+1], j						; note how much we've done	
 	ifl [sp+storedstate_x+1], [sp+storedstate_y+1]	; more lines?
 		set pc, term_print_impl						; print them
-				
+		
 	set pc, pop					; done
 
-term_printf_buf:
-	dat 0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,		0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0
-term_printf_buf_end:
+def term_printf_buf_size	6 ; 5 decimal digits and a sign
 
-def term_printf_locals_size 5 ; +storedstate_size
+def term_printf_locals_size 5+term_printf_buf_size; +storedstate_size
+def term_printf_buf			5+storedstate_size
 def term_printf_stored_x	4+storedstate_size
 def term_printf_param		3+storedstate_size
 def term_printf_word		2+storedstate_size
@@ -416,9 +432,10 @@ def term_printf_term_handle	0+storedstate_size
 ; ---- (note these are not popped).
 ; ---- ASCII control codes are interpreted in format string, but not in arguments.
 term_printf:
+	sub sp, term_printf_buf_size		; reserve space for formatting
 	set push, x							; term_printf_stored_x
 	set push, sp						; term_printf_param
-	add [sp], 1							;	skip return address
+	add [sp], 2+term_printf_buf_size	;	skip return address and items pushed so far
 	set push, x							; term_printf_word
 	set push, 0							; term_printf_byte
 	
@@ -432,29 +449,36 @@ term_printf_loop:
 	ifl b, 0x20										; control code?
 		set pc, [term_printf_control_handlers+b]	; handle it
 	ifn b, '%'										; format code?
-		b 1f										; nope, ordinary char
-	; handle format code
-	; d, x, u, c, s, w
-	sub pc, 1 ; todo
+		set pc, term_printf_output_b				; nope, ordinary char
 	
-1:	; ordinary character
-	bor b, [sp+storedstate_c]			; colour
-	set i, [x+term_cursor_ptr]			; cursor
-	sti [i], b							; store character
-	set [x+term_cursor_ptr], i			; updated cursor
+	jsr term_printf_unpack	; next char
+	ifg b, ('a' - 1)
+		ifl b, ('z' + 1 )
+			set pc, [b + (term_printf_format_handlers - 'a')]
+	ife b, 0		
+		set pc, term_printf_0x00		
+	; unknown code; drop through and output character verbatim.
 	
-	set a, [x+term_vram_curr]			; vram start
-	add a, (STATUS_ROW*SCREEN_COLUMNS)	; end of printable area
-	ife [x+term_cursor_ptr], a			; at end?
-		jsr term_scroll_impl			; scroll
-	set pc, term_printf_loop			; next character
+term_printf_output_b:						; character in b, term handler in x
+	jsr term_scroll_and_clear_if_end_impl	; scroll if necessary
+	bor b, [sp+storedstate_c]				; colour
+	set i, [x+term_cursor_ptr]				; cursor
+	sti [i], b								; store character
+	set [x+term_cursor_ptr], i				; updated cursor	
+	set pc, term_printf_loop				; next character
 
 term_printf_control_handlers:
 	dat term_printf_0x00, term_printf_0x01, term_printf_0x02, term_printf_0x03, term_printf_0x04, term_printf_0x05, term_printf_0x06, term_printf_0x07
 	dat term_printf_0x08, term_printf_0x09, term_printf_0x0a, term_printf_0x0b, term_printf_0x0c, term_printf_0x0d, term_printf_0x0e, term_printf_0x0f
 	dat term_printf_0x10, term_printf_0x11, term_printf_0x12, term_printf_0x13, term_printf_0x14, term_printf_0x15, term_printf_0x16, term_printf_0x17
 	dat term_printf_0x18, term_printf_0x19, term_printf_0x1a, term_printf_0x1b, term_printf_0x1c, term_printf_0x1d, term_printf_0x1e, term_printf_0x1f
-		
+	
+term_printf_format_handlers:
+	dat term_printf_code_a, term_printf_code_b, term_printf_code_c, term_printf_code_d, term_printf_code_e, term_printf_code_f, term_printf_code_g
+	dat term_printf_code_h, term_printf_code_i, term_printf_code_j, term_printf_code_k, term_printf_code_l, term_printf_code_m, term_printf_code_n
+	dat term_printf_code_o, term_printf_code_p, term_printf_code_q, term_printf_code_r, term_printf_code_s, term_printf_code_t, term_printf_code_u
+	dat term_printf_code_v, term_printf_code_w, term_printf_code_x, term_printf_code_y, term_printf_code_z
+	
 ; trashes a. returns next char in b.		
 term_printf_unpack:
 	set a, [sp+term_printf_word+1]
@@ -470,7 +494,6 @@ term_printf_unpack:
 	set pc, pop
 
 term_printf_0x00:	; NUL = done
-	jsr TaskSwitch					; yield
 	jsr proc_restorestate			; restore regs			
 	add sp, term_printf_locals_size	; drop locals
 	set pc, pop						; return to caller
@@ -495,12 +518,12 @@ term_printf_0x09:	; TAB
 	set pc, term_printf_loop
 
 term_printf_0x0a:	; LF (\n)
-	jsr term_newline_impl
-	set pc, term_printf_loop
+	set push, term_printf_loop
+	set pc, term_newline_impl
 	
 term_printf_0x0c:	; FF (new page)
-	jsr term_clear
-	set pc, term_printf_loop
+	set push, term_printf_loop
+	set pc, term_clear
 	
 term_printf_0x0d:	; CR (no newline)
 	and [x+term_cursor_ptr], ~(SCREEN_COLUMNS-1)
@@ -516,3 +539,101 @@ term_printf_0x14:	term_printf_0x15:	term_printf_0x16:	term_printf_0x17:
 term_printf_0x18:	term_printf_0x19:	term_printf_0x1a:	term_printf_0x1b:
 term_printf_0x1c:	term_printf_0x1d:	term_printf_0x1e:	term_printf_0x1f:
 	set pc, term_printf_loop
+
+term_printf_code_c:
+	jsr term_scroll_and_clear_if_end_impl	; scroll if necessary
+	set b, [sp+term_printf_param]
+	set b, [b]
+	add [sp+term_printf_param], 1
+	set pc, term_printf_output_b
+
+term_printf_code_s:		; pointer to a null-terminated one char per word string
+	set b, [sp+term_printf_param]
+	set b, [b]
+	add [sp+term_printf_param], 1
+	ife [b], 0
+		set pc, term_printf_loop
+	set [sp+storedstate_x], b
+1:
+	add b, 1
+	ifn [b], 0
+		b 1b
+	set [sp+storedstate_y], b
+	set push, term_printf_loop
+	set pc, term_print_impl
+		
+term_printf_code_d:
+	set b, [sp+term_printf_param]
+	set b, [b]
+	add [sp+term_printf_param], 1
+	set [sp+term_printf_buf+0], '+'
+	ifl b, 0x8000
+		b term_printf_unsigned_b
+	set [sp+term_printf_buf+0], '-'
+	xor b, 0xffff
+	add b, 1
+	b term_printf_unsigned_b
+		
+term_printf_code_u:
+	set b, [sp+term_printf_param]
+	set b, [b]
+	add [sp+term_printf_param], 1
+	set [sp+term_printf_buf+0], '+'
+term_printf_unsigned_b:
+	set a, b
+	mod a, 10
+	set [sp+term_printf_buf+5], [a+format_hex_data]
+	div b, 10
+	set a, b
+	mod a, 10
+	set [sp+term_printf_buf+4], [a+format_hex_data]
+	div b, 10
+	set a, b
+	mod a, 10
+	set [sp+term_printf_buf+3], [a+format_hex_data]
+	div b, 10
+	set a, b
+	mod a, 10
+	set [sp+term_printf_buf+2], [a+format_hex_data]
+	div b, 10
+	set [sp+term_printf_buf+1], [b+format_hex_data]
+	set a, sp
+	add a, term_printf_buf
+	set [sp+storedstate_x], a
+	add a, 4
+	set [sp+storedstate_y], a
+	set push, term_printf_loop
+	set pc, term_print_impl	
+
+term_printf_code_p:
+term_printf_code_x:
+	set b, [sp+term_printf_param]
+	set b, [b]
+	add [sp+term_printf_param], 1
+	set a, b
+	and a, 0xF
+	set [sp+term_printf_buf+3], [a+format_hex_data]
+	shr b, 4
+	set a, b
+	and a, 0xF
+	set [sp+term_printf_buf+2], [a+format_hex_data]
+	shr b, 4
+	set a, b
+	and a, 0xF
+	set [sp+term_printf_buf+1], [a+format_hex_data]
+	shr b, 4
+	set [sp+term_printf_buf+0], [b+format_hex_data]
+	set a, sp
+	add a, term_printf_buf
+	set [sp+storedstate_x], a
+	add a, 4
+	set [sp+storedstate_y], a
+	set push, term_printf_loop
+	set pc, term_print_impl
+	
+; unhandled format chars
+term_printf_code_a:	term_printf_code_b:											term_printf_code_e: term_printf_code_f: term_printf_code_g:
+term_printf_code_h:	term_printf_code_i: term_printf_code_j: term_printf_code_k: term_printf_code_l: term_printf_code_m: term_printf_code_n:
+term_printf_code_o:						term_printf_code_q: term_printf_code_r:						term_printf_code_t: 
+term_printf_code_v:	term_printf_code_w:						term_printf_code_y: term_printf_code_z:
+	set pc, term_printf_output_b
