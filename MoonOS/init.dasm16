@@ -20,7 +20,40 @@ init:
 	set [freemem_first+kerntable_next], freelist
 	set [freemem_first+kerntable_prev], freelist
 	set [freemem_first+kerntable_block_start], kernel_end
-  
+	
+	; -- partial workaround for 0x10cforum.com emulator bug
+	ife [0x8180], 0
+	ife [0x8181], 0
+	ife [0x8182], 0
+	ife [0x8183], 0
+		set pc, 1f	; no workaround needed
+
+	; reserve memory 0x10cforum.com uses for the default font
+	set [0x8180-kerntable_size+kerntable_next], freemem_first
+	set [0x8180-kerntable_size+kerntable_prev], freelist
+	set [0x8180-kerntable_size+kerntable_block_start], kernel_end
+		
+	set [freelist+kerntable_next], 0x8180-kerntable_size
+	set [freemem_first+kerntable_prev], 0x8180-kerntable_size
+	set [freemem_first+kerntable_block_start], 0x8290	
+	
+	set i, 0
+	hwn [screen_compatibility]
+2:
+	ife i, [screen_compatibility]
+		b 4f
+	hwq i
+	ife b, 0x7349
+		ife a, 0xf615
+			sti pc, 2b
+3:
+	set a, 1 ; MEM_MAP_FONT
+	set b, 0x8180
+	hwi i
+	sti pc, 2b	
+4:	
+	set [screen_compatibility], 1
+1: 
 	; -- Free memory size calculation
 	set x, freelist
 1:

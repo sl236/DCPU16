@@ -32,18 +32,37 @@ format_hex:
   
 format_hex_data: dat "0123456789ABCDEF"
 
+; ----- strncpy
+; Copies null-terminated string at I to J, or the first A elements of it if the string is longer.
+; Strings are assumed to be terminated with an entire 0 word.
+; I and J are advanced to the ends of the respective strings.
+; Note if the string is longer than A elements, the result is not null terminated.
+strncpy:
+	ife a, 0
+		set pc, pop
+	ife [i], 0
+		set pc, pop
+	set push, a
+	add a, i
+1:
+	sti [j], [i]
+	ife [i], 0
+		b 1f
+	ifn i, a
+		b 1b
+	set a, pop
+	set pc, pop
+
 ; ----- strcmp
 ; Compares null-terminated strings I and J. Returns 0 in A if they match, a signed value suitable for ordering otherwise
 ; Strings are assumed to be terminated with an entire 0 word, and either both packed or neither packed.
 ; I and J are advanced to terminating word, or first word that differs.
 strcmp:
 	ifn [i], [j]		; characters don't match?
-		b strcmp_done
-	ife [i], 0
-		b strcmp_done
-	sti pc, strcmp
-
-strcmp_done:
+		b 1f	; skip to end
+	ifn [i], 0
+		sti pc, strcmp
+1:
 	set a, [i]
 	sub a, [j]
 	set pc, pop

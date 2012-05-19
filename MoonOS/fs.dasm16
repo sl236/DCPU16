@@ -92,7 +92,7 @@ moonfs_mount_impl:
 	set b, [a+fdd_sector_size]
 	mul b, 6						; and six sectors' worth of memory (ouch)
 	add x, b
-	jsr malloc
+	jsr kmalloc
 	set b, x						; block handle
 	set b, [y+kerntable_block_start]; its start
 	
@@ -303,11 +303,45 @@ moonfs_discard_sector:
 	jsr moonfs_cache_notify
 	set a, 0
 	set pc, pop
+	
+; -- in - z; b: ptr to 7 words of packed chars. out: a - offset into data area for start of search. c - data area size
+moonfs_namehash_impl:
+	set a, [z+moonfs_fs_device]
+	set a, [a+fdd_sector_size]
+	sub a, inode_header_size
+	set c, a
+	div a, direntry_size
+	set push, a
+	set a, [b]
+	xor a, [b+1]
+	xor a, [b+2]
+	xor a, [b+3]
+	xor a, [b+4]
+	xor a, [b+5]
+	xor a, [b+6]
+	mod a, pop
+	mul a, direntry_size
+	set pc, pop
 
 ; -- in - z; a: source inode. b: ptr to 7 words of packed chars. out - a: error code. b: (on success) claimed inode cacheline ID. Other regs trashed.
-moonfs_inode_open:
+moonfs_inode_open_impl:
+	set push, b						; stash target name
+	set b, 0
+	jsr moonfs_fetch_sector			; cache ptr in b
+	ifn a, 0
+		b moonfs_inode_open_fail_impl
+	set x, b						; x= source inode ptr
+	set b, pop						; restore target name
+	jsr moonfs_namehash_impl		; hash it
+	set y, a						; store initial ptr
+1:
 	
-	set pc, moonfs_not_implemented ; todo
+	
+	sub pc, 1 ; todo
+	
+moonfs_inode_open_fail_impl:
+	set b, pop
+	set pc, pop
 	
 ; --
 moonfs_fopen_impl:
@@ -377,7 +411,7 @@ moonfs_umount_internal:
 	ifn [z+moonfs_fs_refcount], 0
 		set pc, pop
 	set x, [z+moonfs_fs_memory_handle]
-	set pc, free
+	set pc, kfree
 
 moonfs_umount_lock_cache:
 	ife [b+moonfs_fs_cache0_refs], 0

@@ -118,23 +118,49 @@ load('assembler.js');
                 }
                 else if( Wrapper.options['O'] == 'dat' )
                 {
-                    var first;
-                    for(first=0;(first<0xffff)&&!Emulator.mem[first];++first)
-                        ;
-                    var last;
-                    for(last=0xffff;last&&!Emulator.mem[last];--last)
-                        ;
-                    first=(first& ~7)>>>0;
-                    print('.ORG ' + '0x' + Console.H16(first));
-                    for(var i=first;i<=last;i+=0x8)
-                    {
-                        var s = '';
-                        for( var j = 0; (j < 0x8) && ((i+j)<=last); j++ )
-                        {
-                            s += ', 0x' + Console.H16(Emulator.mem[i+j]);
-                        }
-                        print( 'DAT ' + s.substring(1) );
-                    }
+                	var blocks = [];
+                	var block = [];
+                	var start = 0;
+                	for( var i = 0; i < 0x10000; i++ )
+                	{
+                		if( Emulator.mem[i] != 0 )
+                		{
+                			if( (start + block.length) != i )
+                			{
+                				if( (i - (start + block.length)) < 5 )
+                				{
+                					while( (start + block.length) != i )
+                					{
+                						block.push(0);
+                					}
+                				}
+                				else
+                				{
+                					blocks.push([start, block]);
+                					start = i;
+                					block = [];
+                				}
+                			}
+                			block.push( Emulator.mem[i] );
+                		}
+                	}
+                	
+                	function getn(_n)
+                	{
+                		var h = '0x' + _n.toString(16);
+                		var d = _n.toString(10);
+                		return h.length < d.length ? h : d;
+                	}
+                	
+                	if( block.length > 0 )
+                	{
+                		blocks.push( [start, block] );
+                	}
+                	for( var i = 0; i < blocks.length; i++ )
+                	{
+                		print ('org ' + getn(blocks[i][0]) );
+                		print ('dat ' + blocks[i][1].map(getn).join(','));                		
+                	}
                 }
                 else if( Wrapper.options['O'] == 'xxd' )
                 {

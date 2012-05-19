@@ -9,7 +9,7 @@ exit_impl:
   jsr dll_delete		; remove from the process list
   iaq 0				  ; end critical section
   
-  jsr free			  ; release process memory
+  jsr kfree			  ; release process memory
 	
 	; done! taskswitch to next process
   set a,    [proclist]					; next process table
@@ -30,7 +30,7 @@ fork_impl:
   ifg A, X                		; if the result is more than caller asked for
     set X, A              		; use that instead
 
-  jsr malloc			  		; allocate process memory
+  jsr kmalloc			  		; allocate process memory
   
   	; clear process header
   	set j, [x+kerntable_block_start]

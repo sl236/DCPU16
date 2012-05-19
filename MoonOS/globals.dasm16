@@ -9,6 +9,7 @@ freemem_size:			dat 0
 
 screen_device_id:		dat 0xffff
 screen_curr_terminal:	dat 0
+screen_compatibility:	dat 0
 
 keyboard_device_id:		dat 0xffff
 

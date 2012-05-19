@@ -52,6 +52,9 @@ term_map_current:
 	hwi [screen_device_id]
 	set a, LEM1802_MEM_MAP_FONT
 	set b, [x+term_charmap]
+	ifn [screen_compatibility], 0
+		ife b, 0
+			set b, 0x8180
 	hwi [screen_device_id]
 	set a, LEM1802_MEM_MAP_PALETTE
 	set b, [x+term_palette]
@@ -87,7 +90,7 @@ term_release:
 1:	
 	set x, [y+term_block_handle]			; get the memory block handle
 	jsr dll_delete							; remove it from the terminal list
-	set pc, free							; release it, then we're done
+	set pc, kfree							; release it, then we're done
 
 ; Allocate a terminal for the current process. Trashes registers.
 ; Any existing terminal is released. Then VRAM is allocated.
@@ -104,7 +107,7 @@ term_alloc:
 		add x, 0x100
 	ifb z, term_alloc_flag_palette
 		add x, 0x10
-	jsr malloc							; allocate memory for these
+	jsr kmalloc							; allocate memory for these
 	
 	set i, [x+kerntable_block_start]	; new terminal descriptor
 	set b, i							; calculate vram start
@@ -623,4 +626,4 @@ term_printf_code_a:	term_printf_code_b:											term_printf_code_e: term_print
 term_printf_code_h:	term_printf_code_i: term_printf_code_j: term_printf_code_k: term_printf_code_l: term_printf_code_m: term_printf_code_n:
 term_printf_code_o:						term_printf_code_q: term_printf_code_r:						term_printf_code_t: 
 term_printf_code_v:	term_printf_code_w:						term_printf_code_y: term_printf_code_z:
-	set pc, term_printf_output_b
+	set pc, term_printf_output_b	

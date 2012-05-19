@@ -62,12 +62,13 @@ def adddirentry(fs, parent, child, name):
 		print >> sys.stderr, 'could not insert '+file+' at '+path+': directory full!'
 		sys.exit(-1)
 	
+	print >> sys.stderr, ('{0:04x}'.format(child)) + ': ' + name + ' -> ' + '{0:04x}'.format(tgt+inode_header_size) + '/' + ('{0:04x}'.format(parent))
 	tgt = parent*(SECTOR_SIZE/2) + inode_header_size + tgt
-	
-	writestring( fs, parent + tgt, name )
-	writeshort(fs, parent + tgt + direntry_inode, child )
-	writeshort(fs, parent + tgt + direntry_cached_flags, readshort( fs, child*(SECTOR_SIZE/2)+inode_entity_flags ) )
-	writeshort(fs, parent + tgt + direntry_next, readshort( fs, parent*(SECTOR_SIZE/2)+inode_direntry_first ) )
+		
+	writestring(fs, tgt, name)
+	writeshort(fs, tgt + direntry_inode, child )
+	writeshort(fs, tgt + direntry_cached_flags, readshort( fs, child*(SECTOR_SIZE/2)+inode_entity_flags ) )
+	writeshort(fs, tgt + direntry_next, readshort( fs, parent*(SECTOR_SIZE/2)+inode_direntry_first ) )
 	writeshort(fs, parent*(SECTOR_SIZE/2) + inode_entity_size_low, readshort( fs, parent*(SECTOR_SIZE/2)+inode_entity_size_low ) + 1 )
 	writeshort(fs, parent*(SECTOR_SIZE/2) + inode_direntry_first, child )
 
@@ -91,6 +92,7 @@ def addfile(fs, name, path, parent):
 	writeshort(inode, inode_reserved_area+2, 0x0000)				# reserved
 	
 	child = len(fs)/SECTOR_SIZE				
+	print >> sys.stderr, path+'/'+name + ': ' + ('{0:04x}'.format(child))
 	if(((entity_size-inode_header_size)*2) <= SECTOR_SIZE):
 		inode += result
 		sector_align(inode)
@@ -106,7 +108,8 @@ def addfile(fs, name, path, parent):
 	
 
 def adddir(fs, name, path, parent):
-	files = os.listdir(path+'/'+name)	
+	cpath = path+'/'+name if(len(name)!=0) else path
+	files = os.listdir(cpath)	
 	entity_size = len(files)
 	inode = bytearray( (inode_header_size*2) * b'\x00' )
 	
@@ -125,15 +128,16 @@ def adddir(fs, name, path, parent):
 	
 	sector_align(inode)
 	child = len(fs)/SECTOR_SIZE
+	print >> sys.stderr, cpath + ': ' + ('{0:04x}'.format(child))
 	fs += inode
 	for file in files:
-		mode = os.stat(path+'/'+name+'/'+file).st_mode
+		mode = os.stat(cpath+'/'+file).st_mode
 		if stat.S_ISDIR(mode):
-			adddir( fs, file, path + '/' + name, child )
+			adddir( fs, file, cpath, child )
 		elif stat.S_ISREG(mode):
-			addfile( fs, file, path + '/' + name, child )
+			addfile( fs, file, cpath, child )
 		else:
-			print >> sys.stderr, 'not sure how to deal with ' + path+'/'+name+'/'+file + ', skipping'
+			print >> sys.stderr, 'not sure how to deal with ' + cpath+'/'+file + ', skipping'
 	adddirentry(fs, child, child, '.')
 	adddirentry(fs, child, parent, '..')
 			
@@ -148,11 +152,11 @@ def gethash( data ):
 	if(len(data) > direntry_cname_maxlength):
 		print >> sys.stderr, data+': filename too long!'
 	chars = [ord(c) for c in data]
+	if( ( len(chars) & 1 ) != 0 ):
+		chars.append(0)
 	sum = 0
-	for i in range(0, len(chars)):
-		if( chars[i]>=0x80 ):
-			print >> sys.stderr, data+': invalid character in filename!'
-		sum ^= chars[i]
+	for i in range(0, len(chars), 2):
+		sum ^= ((chars[i]&0x7f)<<8)|(chars[i+1]&0x7f)
 	return sum
 
 def writestring( dest, word_offset, data ):
@@ -161,9 +165,9 @@ def writestring( dest, word_offset, data ):
 	chars = [ord(c) for c in data]
 	if((len(chars) & 1)!=0):
 		chars.append(0)
-	sum = 0
 	for i in range(0, len(chars), 2):
 		code = ((chars[i]&0x7f) << 8) | (chars[i+1]&0x7f)
+		#print >> sys.stderr, ('{0:04x}'.format(word_offset))+'/'+('{0:04x}'.format(word_offset+(i/2))) + ' -- ' + chr(chars[i])+chr(chars[i+1])+'/'+('{0:04x}'.format(word_offset+(code)))
 		writeshort( dest, word_offset+(i/2), code )	
 	
 # ------------------------------

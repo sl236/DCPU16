@@ -1,7 +1,7 @@
-; ----- malloc
+; ----- kmalloc
 ; ----- allocate X words of memory; returns block table ptr in X
 def min_block_size 0x80
-malloc:
+kmalloc:
   set push, a
   set push, b
   set push, c
@@ -51,7 +51,7 @@ malloc:
 
 ; ----- Free
 ; ----- Release memory described by X back to the system. X is trashed.
-free:
+kfree:
   set push, a
   set push, b
   set push, c
