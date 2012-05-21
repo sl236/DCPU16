@@ -64,6 +64,13 @@ def moonfs_err_read				2
 def moonfs_err_write			3
 def moonfs_err_bad_magic		4
 def moonfs_err_fs_unmounted		5
+def moonfs_err_not_found		6
+
+def moonfs_handle_inode			0
+def moonfs_handle_pos			1
+def moonfs_handle_access		2
+def moonfs_handle_memblock		3
+def moonfs_handle_size			(moonfs_handle_memblock+1)
 
 moonfs_api:
 	dat moonfs_fopen_impl
@@ -323,29 +330,55 @@ moonfs_namehash_impl:
 	mul a, direntry_size
 	set pc, pop
 
-; -- in - z; a: source inode. b: ptr to 7 words of packed chars. out - a: error code. b: (on success) claimed inode cacheline ID. Other regs trashed.
-moonfs_inode_open_impl:
+; -- in - z; a: source inode. b: ptr to 7 0-padded words of packed chars. 
+; -- out - a: error code. b: (on success) inode index. Other regs trashed.
+moonfs_inode_getid_impl:
 	set push, b						; stash target name
 	set b, 0
-	jsr moonfs_fetch_sector			; cache ptr in b
-	ifn a, 0
-		b moonfs_inode_open_fail_impl
+	jsr moonfs_fetch_sector			; cache ptr in b				
 	set x, b						; x= source inode ptr
 	set b, pop						; restore target name
-	jsr moonfs_namehash_impl		; hash it
+	ifn a, 0						; check for error
+		set pc, pop					; bail if we got an error
+	jsr moonfs_namehash_impl		; hash the name
 	set y, a						; store initial ptr
 1:
+	ife [a+inode_header_size+direntry_inode], 0	; empty record?
+		b 2f				; not found, then
+	ife [a+inode_header_size+0], [b+0]
+	ife [a+inode_header_size+1], [b+1]
+	ife [a+inode_header_size+2], [b+2]
+	ife [a+inode_header_size+3], [b+3]
+	ife [a+inode_header_size+4], [b+4]
+	ife [a+inode_header_size+5], [b+5]
+	ife [a+inode_header_size+6], [b+6]
+		b 1f							; found it!
+	add a, direntry_size				; next dir entry
+	mod a, c							; wrap to stay in data area
+	ifn a, y							; tried everywhere?
+		b 1b							; nope. go around.
+2:
+	set a, moonfs_err_not_found
+	set pc, pop	
+1:
+	set a, 0
+	set b, [a+inode_header_size+direntry_inode]
+	set pc, pop
+	
+; -- z; a: filepath (null-terminated, unpacked).  b: fs_open_mode  on success, returns handle in b. Other registers may be trashed.
+moonfs_fopen_impl:
+	ifn b, fs_open_mode_r
+		set pc, moonfs_not_implemented ; todo
+		
+	set push, b	; store open mode
+	sub sp, 7	; space on stack for packed filename
+	set i, sp	; target
+	set j, a	; source
+	set x, 7	; maximum length
+	jsr strnpack_fill	; pack
 	
 	
 	sub pc, 1 ; todo
-	
-moonfs_inode_open_fail_impl:
-	set b, pop
-	set pc, pop
-	
-; --
-moonfs_fopen_impl:
-	set pc, moonfs_not_implemented ; todo
 	
 ; --
 moonfs_fread_impl:

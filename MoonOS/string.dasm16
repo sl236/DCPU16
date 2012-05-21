@@ -53,6 +53,63 @@ strncpy:
 	set a, pop
 	set pc, pop
 
+; ----- strnpack
+; Packs null-terminated one-word-per-character string at J to I, writing at most X words.
+; I is advanced one past the last word read/written.
+strnpack:
+	ife x, 0
+		set pc, pop
+	set push, x
+	set push, j
+	set push, a
+	add x, i
+1:
+	set a, [j]
+	shl a, 8
+	ifn a, 0
+		add j, 1
+	bor a, [j]
+	sti [i], a
+	ifb a, 0x7f
+	ifn i, x
+		b 1b
+2:
+	set a, pop
+	set j, pop
+	set x, pop
+	set pc, pop	
+
+; ----- strnpack_fill
+; Packs null-terminated one-word-per-character string at J to I, writing at most X words.
+; If fewer than X words are written, the remainder of the destination buffer is zero filled.
+; I is advanced one past the last word read/written.
+strnpack_fill:
+	ife x, 0
+		set pc, pop
+	set push, x
+	set push, j
+	set push, a
+	add x, i
+1:
+	set a, [j]
+	shl a, 8
+	ifn a, 0
+		add j, 1
+	bor a, [j]
+	sti [i], a
+	ifb a, 0x7f
+	ifn i, x
+		b 1b
+		
+	ifn i, x
+2:		sti	[i], 0
+	ifn i, x
+		b 2b
+	set a, pop
+	set j, pop
+	set x, pop
+	set pc, pop	
+
 ; ----- strcmp
 ; Compares null-terminated strings I and J. Returns 0 in A if they match, a signed value suitable for ordering otherwise
 ; Strings are assumed to be terminated with an entire 0 word, and either both packed or neither packed.
