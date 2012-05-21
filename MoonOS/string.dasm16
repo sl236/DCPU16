@@ -97,3 +97,31 @@ strcmp_ia_done:
 	set x, pop			; restore regs
 	set j, pop
 	set pc, pop			; return
+
+; ---- memcpy
+; copies c words from memory at j to memory at i
+; i and j are advanced by c, other registers preserved
+memcpy:
+    set push, b     ; preserve b so we can use it for a temporary value
+    set push, c     ; save a copy of the count
+    and c, 7        ; c is now count % 8
+    set b, memcpy_loop+8   ; end of unrolled loop
+    sub b, c        ; b now points to correct position in loop
+    set c, [sp]     ; restore count
+    add c, j        ; c now holds final address
+    set pc, b       ; enter loop
+memcpy_loop:
+    sti [i], [j]
+    sti [i], [j]
+    sti [i], [j]
+    sti [i], [j]    
+    sti [i], [j]
+    sti [i], [j]
+    sti [i], [j]
+    sti [i], [j]
+    ifn j, c        ; done?
+        sub pc, (memcpy_loop_end-memcpy_loop)
+memcpy_loop_end:
+    set c, pop
+    set b, pop
+    set pc, pop
