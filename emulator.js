@@ -271,7 +271,7 @@
                         break;
                     case 0x3: // SUB
                         tmp = (bval - aval) >>> 0;
-                        Emulator.regs[10] = (tmp < 0) ? 0xFFFF : 0;
+                        Emulator.regs[10] = (tmp & 0xFFFF0000) ? 0xFFFF : 0;
                         SetVal(b, (tmp >>> 0) & 0xFFFF, apc, asp);
                         break;
                     case 0x4: // MUL

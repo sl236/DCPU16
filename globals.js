@@ -33,8 +33,8 @@ var Emulator =
     MemoryHooks: [],
     BackTrace: [],
     JSRHistory: [],
-    BackTraceMax: 32,
-    JSRHistoryMax: 256
+    BackTraceMax: 0,
+    JSRHistoryMax: 0
 };
 
 var Assembler =
