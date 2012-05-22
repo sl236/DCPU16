@@ -182,7 +182,8 @@
         dat: ["/[.]?\\b(dat|dc)\\b\\s*/ ! data", function(_m) { return _m[1]; } ],
         data: ["datatuple | dataunit"],
         datatuple: ["dataunit /\\s*,\\s*/ data", function(_m) { return (function(fn0, fn1) { return function() { fn0(); fn1(); } })(_m[0], _m[2]); } ],
-        dataunit: ["dataliteral | quotedstring"],
+        dataunit: ["/\\s*/ dataitem /\\s*/", function(_m) { return _m[1]; } ],
+        dataitem: ["dataliteral | quotedstring"],
 
         autobranch: ["/;b\\b\\s*/ ! expression", function(_m)
         {
@@ -708,6 +709,8 @@
         }
         macrore = macrore.substring(0, macrore.length - 1);
         macrore = new RegExp(macrore, 'i');
+        
+        datre = new RegExp( '^\\s*dat\\b(.+)$', 'i' );
 
         // assemble
         var result = [];
@@ -762,7 +765,14 @@
             {
                 var r = [];
                 var err = '';
-                line = toparse[j];
+                var lineparts = [toparse[j]];
+                var datmatch = datre.exec(lineparts[0]);
+                var rule = 'START';
+                if( datmatch && datmatch.length > 1 )
+                {
+                    lineparts = datmatch[1].split(',');
+                    rule = 'dataunit';
+                }
 
                 Assembler.CurrLine = (function(_str) { return function() { return _str; } })
                 (
@@ -771,41 +781,45 @@
                        : Assembler.CurrLine()
 
                 );
-
-                try
+                
+                for( var k = 0; k < lineparts.length; k++ )
                 {
-                    // you know what? Let's just use a good old-fashioned parser like I should have done
-                    r = Assembler.Parser.Parse(line);
-                }
-                catch (e)
-                {
-                    Assembler.ErrorState = 1;
-                    err = '; javascript exception: ' + e.toString();
-                }
-
-                if (!r[0])
-                {
-                    Assembler.ErrorState = 1;
-                    Console.Log(Assembler.CurrLine() + ": failed to parse " + line);
-                }
-
-                try
-                {
-                    if (typeof (r[1] == 'function'))
+                    var line = lineparts[k];
+                    try
                     {
-                        var assemblefn = r[1]();
-                        if (typeof (assemblefn) == 'function')
-                        {
-                            result.push([Assembler.CurrLine, assemblefn, Assembler.CurrLineNumber]);
-                        }
+                        // you know what? Let's just use a good old-fashioned parser like I should have done
+                        r = Assembler.Parser.Parse(line, rule);
                     }
-                }
-                catch (e)
-                {
-                    if (!Assembler.ErrorState)
+                    catch (e)
                     {
                         Assembler.ErrorState = 1;
-                        Console.Log("Assembling line " + Assembler.CurrLine() + ": assembler javascript error " + e.toString());
+                        err = '; javascript exception: ' + e.toString();
+                    }
+
+                    if (!r[0])
+                    {
+                        Assembler.ErrorState = 1;
+                        Console.Log(Assembler.CurrLine() + ": failed to parse " + line);
+                    }
+
+                    try
+                    {
+                        if (typeof (r[1] == 'function'))
+                        {
+                            var assemblefn = r[1]();
+                            if (typeof (assemblefn) == 'function')
+                            {
+                                result.push([Assembler.CurrLine, assemblefn, Assembler.CurrLineNumber]);
+                            }
+                        }
+                    }
+                    catch (e)
+                    {
+                        if (!Assembler.ErrorState)
+                        {
+                            Assembler.ErrorState = 1;
+                            Console.Log("Assembling line " + Assembler.CurrLine() + ": assembler javascript error " + e.toString());
+                        }
                     }
                 }
             }
