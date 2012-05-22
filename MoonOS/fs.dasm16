@@ -365,19 +365,37 @@ moonfs_inode_getid_impl:
 	set b, [a+inode_header_size+direntry_inode]
 	set pc, pop
 	
-; -- z; a: filepath (null-terminated, unpacked).  b: fs_open_mode  on success, returns handle in b. Other registers may be trashed.
+; -- z; a: filepath (null-terminated, unpacked, absolute path, / as dir separator, leading / stripped).  
+; --    b: fs_open_mode  
+; --    on success, returns handle in b. Other registers may be trashed.
 moonfs_fopen_impl:
 	ifn b, fs_open_mode_r
 		set pc, moonfs_not_implemented ; todo
-		
-	set push, b	; store open mode
+	
+	set push, j	; preserve a, b, i, j
+	set push, i	;
+	set push, a ;
+	set push, b	;
 	sub sp, 7	; space on stack for packed filename
+	
+1:
+	set i, a	; source
+2:
+	ife [i], 0		; null terminator?
+		b 1f		; we have a filename
+	ifn [i], '/'
+		sti	pc, 2b
+	
+	sub pc, 1 ; todo
+	
 	set i, sp	; target
 	set j, a	; source
 	set x, 7	; maximum length
 	jsr strnpack_fill	; pack
 	
+	sub pc, 1 ; todo
 	
+1:
 	sub pc, 1 ; todo
 	
 ; --
