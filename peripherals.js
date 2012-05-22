@@ -542,6 +542,10 @@ Peripherals.push(function()
                 code = scanCodeMap[e.keyCode];
                 if( !code )
                 {
+                	if( ( e.keyCode >= 0x20 ) || (e.keyCode < 0x7F ) )
+                	{
+	                	keyStatus[e.keyCode] = (_etype == 1);
+                	}
                     return false;
                 }
             }
