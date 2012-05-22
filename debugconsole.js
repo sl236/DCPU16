@@ -128,10 +128,32 @@
      { 
      	if( _args.length )
      	{
+     		Emulator.paused=1;
          Console.ReadFile
                 (
                     _args.join(' '),
                     function(data) { Emulator.LoadB64Image(data); }
+                );
+        }
+        else
+        {
+        	window.open( "data:application/octet-stream,"+Emulator.GetB64MemoryDump(), "image.dmp.b64" );
+        }
+     }
+  },
+
+  runimage:
+  {
+     help: 'runimage [file.b64]\nResets emulator, reads a base 64 encoded memory image and runs it. With no arguments, produces a base64 image from current memory content.',
+     fn: function(_args) 
+     { 
+     	if( _args.length )
+     	{
+     		Emulator.paused=1;
+         Console.ReadFile
+                (
+                    _args.join(' '),
+                    function(data) { Emulator.LoadB64Image(data); Emulator.paused=0; Emulator.Run(); }
                 );
         }
         else
