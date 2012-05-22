@@ -59,6 +59,8 @@ Peripherals.push(function()
     var fontBase = 0;
     var paletteBase = 0;
     var blinkOn = 0;
+    var blinkMin = 0;
+    var blinkMax = 0x179;
 
     for (var i = 0; i < 256; i++)
     {
@@ -118,17 +120,25 @@ Peripherals.push(function()
             }
             
             var fg=palette[_fgColour];
-            for(var j=0;j<td.data.length;j+=4)
+            if(glyph.fg != fg)
             {
-                td.data[j + 0] = fg[0];
-                td.data[j + 1] = fg[1];
-                td.data[j + 2] = fg[2];
+                for(var j=0;j<td.data.length;j+=4)
+                {
+                    td.data[j+0]=fg[0];
+                    td.data[j+1]=fg[1];
+                    td.data[j+2]=fg[2];
+                }
+                glyph.fg = fg;
             }
-
-            for (var i = 0; i < 8; i++)
+            
+            if( glyph.code != code )
             {
-                td.data[(i * 2 + 0) * 4 + 3] = (code & (1 << (i + 8))) ? 255 : 0;
-                td.data[(i * 2 + 1) * 4 + 3] = (code & (1 << (i))) ? 255 : 0;
+                for(var i=0;i<8;i++)
+                {
+                    td.data[(i*2+0)*4+3]=(code&(1<<(i+8)))?255:0;
+                    td.data[(i*2+1)*4+3]=(code&(1<<(i)))?255:0;
+                }
+                glyph.code = code;
             }
 
             glyph.chDC.putImageData(td, 0, 0);
@@ -153,20 +163,32 @@ Peripherals.push(function()
             
            var glyphIdx = (_value&0x7F) << 1;
            var draw = (!(_value&0x80))||blinkOn;
-           if( _mask & 1 )
+           if( !_mask )
            {
-                screenDC.fillRect(x, y, 2, 8);
-                if( draw )
-                {
-                    screenDC.drawImage(getGlyph(glyphIdx,((_value>>>0xC)&0xF)),x,y);                                                       
-                }
-           }
-           if( _mask & 2 )
-           {
-               screenDC.fillRect( x+2, y, 2, 8 );
+               screenDC.fillRect(x,y,4,8);
                if( draw )
                {
+                   screenDC.drawImage(getGlyph(glyphIdx,((_value>>>0xC)&0xF)),x,y);
                    screenDC.drawImage(getGlyph(glyphIdx+1,((_value>>>0xC)&0xF)),x+2,y);
+               }
+           }
+           else
+           {           
+               if( _mask & 1 )
+               {
+                    screenDC.fillRect(x, y, 2, 8);
+                    if( draw )
+                    {
+                        screenDC.drawImage(getGlyph(glyphIdx,((_value>>>0xC)&0xF)),x,y);                                                       
+                    }
+               }
+               if( _mask & 2 )
+               {
+                   screenDC.fillRect( x+2, y, 2, 8 );
+                   if( draw )
+                   {
+                       screenDC.drawImage(getGlyph(glyphIdx+1,((_value>>>0xC)&0xF)),x+2,y);
+                   }
                }
            }
        }
@@ -223,7 +245,7 @@ Peripherals.push(function()
                     || (((Emulator.mem[i] >> 0xC) & 0xF) == entry)
                   )
                     {
-                        updateScreen(i, Emulator.mem[i], 3);
+                        updateScreen(i, Emulator.mem[i]);
                     }
                 }
             }
@@ -261,13 +283,25 @@ Peripherals.push(function()
                         Emulator.MemoryHooks[i] = null;
                     }
                 }
+                
                 vramBase = Emulator.regs[1];
+                blinkMin=vramBase+0x179;
+                blinkMax=vramBase;
+                
                 if (vramBase != 0)
                 {
                     for (var i = vramBase; i < (vramBase + 0x180); i++)
                     {
-                        Emulator.MemoryHooks[i] = function(_addr, _val){ updateScreen(_addr, _val, 3); };
-                        updateScreen(i, Emulator.mem[i], 3);
+                        Emulator.MemoryHooks[i] = function(_addr, _val)
+                        { 
+                            if( _val & 0x80 )
+                            {
+                                blinkMin = (blinkMin<_addr) ? blinkMin : _addr;
+                                blinkMax = (blinkMax>_addr) ? blinkMax : _addr;
+                            }
+                            updateScreen(_addr, _val); 
+                        };
+                        updateScreen(i, Emulator.mem[i]);
                     }
                 }
                 else
@@ -398,12 +432,22 @@ Peripherals.push(function()
     {
         blinkOn = !blinkOn;
         if( vramBase )
-        {        
-            for (var i = vramBase; i < (vramBase + 0x180); i++)
+        {
+            while( !(Emulator.mem[blinkMin] & 0x80) && (blinkMin <= blinkMax) )
+            {
+                blinkMin++;
+            }
+
+            while(!(Emulator.mem[blinkMax]&0x80)&&(blinkMin<=blinkMax))
+            {
+                --blinkMax;
+            }
+            
+            for(var i=blinkMin; i<=blinkMax; i++)
             {
                 if( Emulator.mem[i] & 0x80 )
                 {
-                    updateScreen( i, Emulator.mem[i], 3 );
+                    updateScreen( i, Emulator.mem[i] );
                 }
             }
         }
