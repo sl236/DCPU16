@@ -60,13 +60,13 @@ Peripherals.push(function()
     var paletteBase = 0;
     var blinkOn = 0;
 
-    for (var i = 0; i < 128; i++)
+    for (var i = 0; i < 256; i++)
     {
         glyphCache[i] = [];
         for (var j = 0; j < 16; j++)
         {
             var vch = document.createElement('canvas');
-            vch.setAttribute('width', 4);
+            vch.setAttribute('width', 2);
             vch.setAttribute('height', 8);
             vch.setAttribute('class', 'crisp');
             var vchDC = vch.getContext('2d');
@@ -109,25 +109,12 @@ Peripherals.push(function()
         var glyph = glyphCache[_idx][_fgColour];
         if (!glyph.ok)
         {
-            var code0;
-            var code1;
-
-            if (fontBase != 0)
-            {
-                var char_addr = fontBase + ((_idx & 0x7F) << 1);
-                code0 = Emulator.mem[char_addr];
-                code1 = Emulator.mem[char_addr + 1];
-            }
-            else
-            {
-                code0 = defaultFont[((_idx & 0x7F) << 1)];
-                code1 = defaultFont[((_idx & 0x7F) << 1) + 1];
-            }
+            var code = (fontBase == 0) ? defaultFont[_idx] : Emulator.mem[fontBase + _idx];
 
             var td = glyph.td;
             if (!td)
             {
-                td = glyph.td = glyph.chDC.createImageData(4, 8);
+                td = glyph.td = glyph.chDC.createImageData(2, 8);
             }
             
             var fg=palette[_fgColour];
@@ -140,10 +127,8 @@ Peripherals.push(function()
 
             for (var i = 0; i < 8; i++)
             {
-                td.data[(i * 4 + 0) * 4 + 3] = (code0 & (1 << (i + 8))) ? 255 : 0;
-                td.data[(i * 4 + 1) * 4 + 3] = (code0 & (1 << (i))) ? 255 : 0;
-                td.data[(i * 4 + 2) * 4 + 3] = (code1 & (1 << (i + 8))) ? 255 : 0;
-                td.data[(i * 4 + 3) * 4 + 3] = (code1 & (1 << (i))) ? 255 : 0;
+                td.data[(i * 2 + 0) * 4 + 3] = (code & (1 << (i + 8))) ? 255 : 0;
+                td.data[(i * 2 + 1) * 4 + 3] = (code & (1 << (i))) ? 255 : 0;
             }
 
             glyph.chDC.putImageData(td, 0, 0);
@@ -152,7 +137,7 @@ Peripherals.push(function()
         return glyph.ch;
     }
 
-    function updateScreen(_addr, _value)
+    function updateScreen(_addr, _value, _mask)
     {
         if ((vramBase <= _addr) && ((vramBase + 0x180) > _addr))
         {
@@ -165,24 +150,41 @@ Peripherals.push(function()
                 screenDC.fillStyle = paletteStyle[bg];
                 screenDClastFS = paletteStyle[bg];
             }
-            screenDC.fillRect(x, y, 4, 8);
-            if( (!(_value & 0x80)) || blinkOn )
-            {
-               screenDC.drawImage(getGlyph(_value&0x7F,((_value>>>0xC)&0xF)),x,y);            
-            }
-        }
+            
+           var glyphIdx = (_value&0x7F) << 1;
+           var draw = (!(_value&0x80))||blinkOn;
+           if( _mask & 1 )
+           {
+                screenDC.fillRect(x, y, 2, 8);
+                if( draw )
+                {
+                    screenDC.drawImage(getGlyph(glyphIdx,((_value>>>0xC)&0xF)),x,y);                                                       
+                }
+           }
+           if( _mask & 2 )
+           {
+               screenDC.fillRect( x+2, y, 2, 8 );
+               if( draw )
+               {
+                   screenDC.drawImage(getGlyph(glyphIdx+1,((_value>>>0xC)&0xF)),x+2,y);
+               }
+           }
+       }
     }
 
     function updateCharMap(_addr, _value)
     {
         if ((fontBase <= _addr) && ((fontBase + 0x100) > _addr))
         {
-            var ch = ((_addr - fontBase) >> 1) & 0x7F;
+            var ch = ((_addr - fontBase)>>>0) & 0xFF;
 
             for (var i = 0; i < 16; i++)
             {
                 glyphCache[ch][i].ok = 0;
             }
+            
+            var mask = 1<<(ch & 1);
+            ch >>>= 1;
 
             if (vramBase != 0)
             {
@@ -190,7 +192,7 @@ Peripherals.push(function()
                 {
                     if ((Emulator.mem[i] & 0x7F) == ch)
                     {
-                        updateScreen(i, Emulator.mem[i]);
+                        updateScreen(i, Emulator.mem[i], mask);
                     }
                 }
             }
@@ -208,7 +210,7 @@ Peripherals.push(function()
             palette[entry] = [r, g, b];
             paletteStyle[entry] = 'rgb(' + r + ',' + g + ',' + b + ')';
 
-            for (var i = 0; i < 128; i++)
+            for (var i = 0; i < 256; i++)
             {
                 glyphCache[i][entry].ok = 0;
             }
@@ -221,7 +223,7 @@ Peripherals.push(function()
                     || (((Emulator.mem[i] >> 0xC) & 0xF) == entry)
                   )
                     {
-                        updateScreen(i, Emulator.mem[i]);
+                        updateScreen(i, Emulator.mem[i], 3);
                     }
                 }
             }
@@ -264,8 +266,8 @@ Peripherals.push(function()
                 {
                     for (var i = vramBase; i < (vramBase + 0x180); i++)
                     {
-                        Emulator.MemoryHooks[i] = updateScreen;
-                        updateScreen(i, Emulator.mem[i]);
+                        Emulator.MemoryHooks[i] = function(_addr, _val){ updateScreen(_addr, _val, 3); };
+                        updateScreen(i, Emulator.mem[i], 3);
                     }
                 }
                 else
@@ -401,7 +403,7 @@ Peripherals.push(function()
             {
                 if( Emulator.mem[i] & 0x80 )
                 {
-                    updateScreen( i, Emulator.mem[i] );
+                    updateScreen( i, Emulator.mem[i], 3 );
                 }
             }
         }
