@@ -354,7 +354,7 @@
                         break;
                     case 0x1B: // SUX
                         tmp = (bval - aval + Emulator.regs[10]) >>> 0;
-                        Emulator.regs[10] = (tmp < 0) ? 0xFFFF : 0;
+                        Emulator.regs[10] = (tmp & 0xFFFF0000) ? 0xFFFF : 0;
                         SetVal(b, (tmp >>> 0) & 0xFFFF, apc, asp);
                         break;
 
