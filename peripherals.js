@@ -24,7 +24,8 @@ Peripherals.push(function()
 
     $('#emulation').html('<canvas class="crisp" id="screen" width="576" height="448" />');
     var screen = document.getElementById('screen');
-    var screenDC = screen.getContext('2d');
+    var screenGL = null;
+    var screenDC = null;    
     var defaultImage = null;
 
     var defaultFont =
@@ -61,51 +62,10 @@ Peripherals.push(function()
     var blinkOn = 0;
     var blinkMin = 0;
     var blinkMax = 0x179;
-
-    for (var i = 0; i < 256; i++)
-    {
-        glyphCache[i] = [];
-        for (var j = 0; j < 16; j++)
-        {
-            var vch = document.createElement('canvas');
-            vch.setAttribute('width', 2);
-            vch.setAttribute('height', 8);
-            vch.setAttribute('class', 'crisp');
-            var vchDC = vch.getContext('2d');
-            glyphCache[i][j] = { ch: vch, chDC: vchDC, ok: 0, td: null };
-        }
-    }
-
-    for (var i = 0; i < 16; i++)
-    {
-        var r = (i & 4) ? 0xAA : 0;
-        var g = (i & 2) ? 0xAA : 0;
-        var b = (i & 1) ? 0xAA : 0;
-        if (i & 8)
-        {
-            r += 0x55;
-            g += 0x55;
-            b += 0x55;
-        }
-        else if (i == 6)
-        {
-            b += 0x55;
-        }
-        palette[i] = [r, g, b];
-        paletteStyle[i] = 'rgb(' + r + ',' + g + ',' + b + ')';
-        defaultPalette[i] = (((r >> 4) & 0xF) << 0x8) | (((g >> 4) & 0xF) << 0x4) | ((b >> 4) & 0xF);
-    }
-
-    screenDC.scale(4, 4);
-    screenDC.translate(8, 8);
-    screenDC.mozImageSmoothingEnabled = false;
-    screenDC.save();
-    screenDC.fillStyle = 'rgb(0,0,0)';
-    screenDC.fillRect(-8, -8, 128 + 8 * 2, 96 + 8 * 2);
-    screenDC.restore();
-    var screenDClastFS = 'rgb(0,0,0)';
-    var borderColour = 0;
-
+    var screenDClastFS='rgb(0,0,0)';
+    var borderColour=0;
+    var glProgram=null;
+    
     function getGlyph(_idx, _fgColour)
     {
         var glyph = glyphCache[_idx][_fgColour];
@@ -248,11 +208,11 @@ Peripherals.push(function()
                         updateScreen(i, Emulator.mem[i]);
                     }
                 }
-            }
-
-            if (borderColour == entry)
-            {
-                updateBorder(entry);
+                
+                if(borderColour==entry)
+                {
+                    updateBorder(entry);
+                }
             }
         }
     }
@@ -270,7 +230,7 @@ Peripherals.push(function()
         screenDC.fillRect(128, 0, 8, 96);
         screenDC.fillRect(-8, 96, 128 + 8 * 2, 8);
     }
-
+    
     function onInterrupt()
     {
         switch (Emulator.regs[0])
@@ -282,6 +242,11 @@ Peripherals.push(function()
                     {
                         Emulator.MemoryHooks[i] = null;
                     }
+                }
+                
+                if( Emulator.regs[1] && !vramBase )
+                {
+                    updateBorder(borderColour);                
                 }
                 
                 vramBase = Emulator.regs[1];
@@ -387,6 +352,132 @@ Peripherals.push(function()
         return 0;
     }
     
+    var contextLostListening = 0;
+
+    function resetContext()
+    {
+        if( screenDC )
+        {
+            screenDC.restore();
+        }
+        
+        screenDC=null;
+        screenGL=null;
+        glProgram=null;
+        try
+        {
+            if(window.WebGLRenderingContext)
+            {
+                //screenGL=screen.getContext('webgl');
+            }
+        }
+        catch(e) { }
+
+        if(screenGL)
+        {
+            if( !contextLostListening )
+            {
+                contextLostListening = 1;
+                screen.addEventListener("webglcontextlost",function(event)
+                {
+                    event.preventDefault();
+                    resetContext();
+                },false);
+                screen.addEventListener("webglcontextrestored",resetContext,false);
+            }
+        }
+        else
+        {
+            screenDC=screen.getContext('2d');
+            screenDC.save();
+            screenDC.scale(4,4);
+            screenDC.translate(8,8);
+            screenDC.imageSmoothingEnabled=false;
+            screenDC.mozImageSmoothingEnabled=false;
+            screenDC.save();
+            screenDC.fillStyle='rgb(0,0,0)';
+            screenDC.fillRect(-8,-8,128+8*2,96+8*2);
+            screenDC.restore();
+        }
+
+        for(var i=0;i<256;i++)
+        {
+            glyphCache[i]=[];
+            for(var j=0;j<16;j++)
+            {
+                var vch=document.createElement('canvas');
+                vch.setAttribute('width',2);
+                vch.setAttribute('height',8);
+                vch.setAttribute('class','crisp');
+                var vchDC=vch.getContext('2d');
+                glyphCache[i][j]={ ch: vch,chDC: vchDC,ok: 0,td: null };
+            }
+        }
+
+        for(var i=0;i<16;i++)
+        {
+            var r=(i&4)?0xAA:0;
+            var g=(i&2)?0xAA:0;
+            var b=(i&1)?0xAA:0;
+            if(i&8)
+            {
+                r+=0x55;
+                g+=0x55;
+                b+=0x55;
+            }
+            else if(i==6)
+            {
+                b+=0x55;
+            }
+            palette[i]=[r,g,b];
+            paletteStyle[i]='rgb('+r+','+g+','+b+')';
+            defaultPalette[i]=(((r>>4)&0xF)<<0x8)|(((g>>4)&0xF)<<0x4)|((b>>4)&0xF);
+        }
+
+        if(vramBase!=0)
+        {
+            for(var i=vramBase;i<(vramBase+0x180);i++)
+            {
+                updateScreen(i,Emulator.mem[i]);
+            }
+        }
+        else
+        {
+            if(defaultImage)
+            {
+                screenDC.drawImage(defaultImage,-8,-8);
+            }
+        }
+        if(fontBase!=0)
+        {
+            for(var i=fontBase;i<(fontBase+0x100);i++)
+            {
+                updateCharMap(i,Emulator.mem[i]);
+            }
+        }
+        else
+        {
+            for(var i=0;i<0x100;i++)
+            {
+                updateCharMap(i,defaultFont[i]);
+            }
+        }
+        if(paletteBase!=0)
+        {
+            for(var i=paletteBase;i<(paletteBase+0x10);i++)
+            {
+                updatePalette(i,Emulator.mem[i]);
+            }
+        }
+        else
+        {
+            for(var i=0;i<0x10;i++)
+            {
+                updatePalette(i,defaultPalette[i]);
+            }
+        }
+    }    
+    
     function onReset()
     {
         if(vramBase!=0)
@@ -397,10 +488,6 @@ Peripherals.push(function()
             }
         }
         vramBase=0;
-        if( defaultImage )
-        {
-        	screenDC.drawImage( defaultImage, -8, -8 );
-        }
         if(fontBase!=0)
         {
             for(var i=fontBase;i<(fontBase+0x100);i++)
@@ -409,10 +496,6 @@ Peripherals.push(function()
             }
         }
         fontBase=0;
-        for(var i=0;i<0x100;i++)
-        {
-            updateCharMap(i,0);
-        }
         if(paletteBase!=0)
         {
             for(var i=paletteBase;i<(paletteBase+0x10);i++)
@@ -421,11 +504,7 @@ Peripherals.push(function()
             }
         }
         paletteBase=0;
-        for(var i=0;i<0x10;i++)
-        {
-            updatePalette(i,defaultPalette[i]);
-        }
-        updateBorder( 0 );            
+        resetContext();
     }
     
     function onToggleBlink()
@@ -454,6 +533,8 @@ Peripherals.push(function()
         
         setTimeout( onToggleBlink, blinkOn ? 650 : 350 );
     }
+    
+    resetContext();
     
     var deviceDesc = // http://dcpu.com/highnerd/lem1802.txt
     {

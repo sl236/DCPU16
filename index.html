@@ -1,5 +1,29 @@
 <html><head>
 <link type="text/css" rel="stylesheet" href="style.css" />
+<script id="vshader" type="x-shader/x-vertex">
+attribute vec4  vPosUV;
+attribute float vPaletteIndex;
+varying mediump vec2 oUV;
+varying mediump vec2 oPaletteUV;
+void main()
+{
+    gl_Position = vPosUV.xy;
+    oUV = vPosUV.zw;
+    oPaletteUV = vec2( vPaletteIndex, 0 );
+}
+</script>
+<script id="fshader" type="x-shader/x-fragment">
+precision lowp float;
+uniform sampler2D texture;
+uniform sampler2D palette;
+varying mediump vec2 oUV;
+varying mediump vec2 oPaletteUV;
+void main()
+{
+    gl_FragColor.xyz = texture2D( palette, oPaletteUV ).xyz;
+    gl_FragColor.w = texture2D( texture, oUV ).w;    
+}
+</script>
 <script language="javascript" src="jquery.js"></script>
 <script language="javascript" src="parser.js"></script>
 <script language="javascript" src="globals.js"></script>
