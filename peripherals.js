@@ -15,14 +15,14 @@ Peripherals.push(function()
     // screen height is 12 tiles
     // tile width is 4 emulated pixels
     // tile height is 8 emulated pixels
-    // border size is 16 emulated pixels
+    // border size is 8 emulated pixels
 
     // magnification factor is 4
-    // therefore canvas size is (32*4*4 + 16*2*4, 12*8*4 + 16*2*4)
+    // therefore canvas size is (32*4*4 + 8*2*4, 12*8*4 + 8*2*4)
 
     // ------
 
-    $('#emulation').html('<canvas class="crisp" id="screen" width="640" height="512" />');
+    $('#emulation').html('<canvas class="crisp" id="screen" width="576" height="448" />');
     var screen = document.getElementById('screen');
     var screenDC = screen.getContext('2d');
     var defaultImage = null;
@@ -97,11 +97,11 @@ Peripherals.push(function()
     }
 
     screenDC.scale(4, 4);
-    screenDC.translate(16, 16);
+    screenDC.translate(8, 8);
     screenDC.mozImageSmoothingEnabled = false;
     screenDC.save();
     screenDC.fillStyle = 'rgb(0,0,0)';
-    screenDC.fillRect(-16, -16, 128 + 16 * 2, 96 + 16 * 2);
+    screenDC.fillRect(-8, -8, 128 + 8 * 2, 96 + 8 * 2);
     screenDC.restore();
     var screenDClastFS = 'rgb(0,0,0)';
     var borderColour = 0;
@@ -265,10 +265,10 @@ Peripherals.push(function()
             screenDC.fillStyle = paletteStyle[borderColour];
             screenDClastFS = paletteStyle[borderColour];
         }
-        screenDC.fillRect(-16, -16, 128 + 16 * 2, 16);
-        screenDC.fillRect(-16, 0, 16, 96);
-        screenDC.fillRect(128, 0, 16, 96);
-        screenDC.fillRect(-16, 96, 128 + 16 * 2, 16);
+        screenDC.fillRect(-8, -8, 128 + 8 * 2, 8);
+        screenDC.fillRect(-8, 0, 8, 96);
+        screenDC.fillRect(128, 0, 8, 96);
+        screenDC.fillRect(-8, 96, 128 + 8 * 2, 8);
     }
 
     function onInterrupt()
@@ -308,7 +308,7 @@ Peripherals.push(function()
                 {
 			        if( defaultImage )
 			        {
-			        	screenDC.drawImage( defaultImage, -16, -16 );
+			        	screenDC.drawImage( defaultImage, -8, -8 );
 			        }
                 }
                 return 0;
@@ -399,7 +399,7 @@ Peripherals.push(function()
         vramBase=0;
         if( defaultImage )
         {
-        	screenDC.drawImage( defaultImage, -16, -16 );
+        	screenDC.drawImage( defaultImage, -8, -8 );
         }
         if(fontBase!=0)
         {
@@ -471,7 +471,7 @@ Peripherals.push(function()
     		defaultImage = imageHolder;
     		if(!vramBase)
     		{
-    			screenDC.drawImage( defaultImage, -16, -16 );
+    			screenDC.drawImage( defaultImage, -8, -8 );
     		}
     	}
     	imageHolder.src="LEM1802.png";
