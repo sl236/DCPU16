@@ -27,6 +27,7 @@ Peripherals.push(function()
     var screenGL = null;
     var screenDC = null;    
     var defaultImage = null;
+    var defaultImageTexture = 0;
 
     var defaultFont =
             [
@@ -65,6 +66,53 @@ Peripherals.push(function()
     var screenDClastFS='rgb(0,0,0)';
     var borderColour=0;
     var glProgram=null;
+    var glProgramTextureUniform=0;
+    var glProgramPaletteUniform=0;
+    var screenPosID = null;
+    var screenGlyphData = null;
+    var screenIndices = null;
+    var enableWebGL = 0;
+    
+    try
+    {
+        screenPosID = new Float32Array( 32 * 12 * 4 * 4 );
+        screenGlyphData = new Float32Array( 32 * 12 * 4 * 4 );
+        screenIndices = new Uint16Array( 32 * 12 * 4 + 12 * 2 );
+        var vpos = 0;
+        var ipos = 0;
+        for( var y = 0; y < 12; y++ )
+        {
+            screenIndices[ipos++] = vpos;
+            for( var x = 0; x < 32; x++ )
+            {
+                screenPosID[vpos*4+0]=x*4;
+                screenPosID[vpos*4+1]=y*8;
+                screenPosID[vpos*4+2]=0;
+                screenPosID[vpos*4+3]=0;
+                screenIndices[ipos++]=vpos++;
+                screenPosID[vpos*4+0]=x*4;
+                screenPosID[vpos*4+1]=y*8+8;
+                screenPosID[vpos*4+2]=0;
+                screenPosID[vpos*4+3]=8;
+                screenIndices[ipos++]=vpos++;
+                screenPosID[vpos*4+0]=x*4+4;
+                screenPosID[vpos*4+1]=y*8;
+                screenPosID[vpos*4+2]=4;
+                screenPosID[vpos*4+3]=0;
+                screenIndices[ipos++]=vpos++;
+                screenPosID[vpos*4+0]=x*4+4;
+                screenPosID[vpos*4+1]=y*8+8;
+                screenPosID[vpos*4+2]=4;
+                screenPosID[vpos*4+3]=8;
+                screenIndices[ipos++]=vpos++;
+            }
+            screenIndices[ipos++] = vpos-1;
+        }    
+    }
+    catch(e) { }
+    
+    enableWebGL = enableWebGL && screenPosID && screenGlyphData && screenIndices && Console.webGLSetup && window.WebGLRenderingContext;
+
     
     function getGlyph(_idx, _fgColour)
     {
@@ -364,11 +412,35 @@ Peripherals.push(function()
         screenDC=null;
         screenGL=null;
         glProgram=null;
+        glProgramTextureUniform=0;
+        glProgramPaletteUniform=0;
+        defaultImageTexture = 0;
         try
         {
-            if(window.WebGLRenderingContext)
+            if(enableWebGL)
             {
-                //screenGL=screen.getContext('webgl');
+                screenGL = screen.getContext('webgl');
+                if( screenGL )
+                {
+                    glProgram=Console.webGLSetup(screenGL,'vshader','fshader',['vPosUV','vPaletteIndex'],[0,0,0,1],10000);
+                    if( glProgram )  
+                    {
+                        glProgramTextureUniform=screenGL.getUniformLocation(glProgram, 'texture');
+                        glProgramPaletteUniform=screenGL.getUniformLocation(glProgram, 'palette');
+                        defaultImageTexture = Console.loadImageTexture('LEM1802.png');
+                        screenGL.bindBuffer(screenGL.ARRAY_BUFFER, screenPosID);
+                        screenGL.vertexAttribPointer(0,4,screenGL.FLOAT,false,0,0);
+                        screenGL.bindBuffer(screenGL.ELEMENT_ARRAY_BUFFER, screenIndices);
+                        screenGL.uniform1i(gl.getUniformLocation(glProgram, "texture"), 0);
+                        screenGL.uniform1i(gl.getUniformLocation(glProgram, "palette"), 1);
+                        screenGL.uniform1f(gl.getUniformLocation(glProgram, "uBlink"),  1);
+                        screenGL.bindBuffer(screenGL.ARRAY_BUFFER, 0);
+                    }
+                }
+                if( !glProgram || !glProgramTextureUniform || !glProgramPaletteUniform || !defaultImageTexture )
+                {
+                    screenGL = null;
+                }
             }
         }
         catch(e) { }
@@ -506,28 +578,35 @@ Peripherals.push(function()
         paletteBase=0;
         resetContext();
     }
-    
+        
     function onToggleBlink()
     {
         blinkOn = !blinkOn;
         if( vramBase )
         {
-            while( !(Emulator.mem[blinkMin] & 0x80) && (blinkMin <= blinkMax) )
+            if( screenGL )
             {
-                blinkMin++;
+                screenGL.uniform1f(gl.getUniformLocation(glProgram, "uBlink"),  blinkOn ? 1.0 : 0.0);
             }
-
-            while(!(Emulator.mem[blinkMax]&0x80)&&(blinkMin<=blinkMax))
+            else
             {
-                --blinkMax;
-            }
-            
-            for(var i=blinkMin; i<=blinkMax; i++)
-            {
-                if( Emulator.mem[i] & 0x80 )
+                while(!(Emulator.mem[blinkMin]&0x80)&&(blinkMin<=blinkMax))
                 {
-                    updateScreen( i, Emulator.mem[i] );
+                    blinkMin++;
                 }
+
+                while(!(Emulator.mem[blinkMax]&0x80)&&(blinkMin<=blinkMax))
+                {
+                    --blinkMax;
+                }
+
+                for(var i=blinkMin;i<=blinkMax;i++)
+                {
+                    if(Emulator.mem[i]&0x80)
+                    {
+                        updateScreen(i,Emulator.mem[i]);
+                    }
+                }            
             }
         }
         
