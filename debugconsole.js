@@ -483,6 +483,7 @@
         {
             Peripherals[i](DebugCommands);
         }
+        Emulator.Reset();
 
         document.onkeypress = function(e)
         {
