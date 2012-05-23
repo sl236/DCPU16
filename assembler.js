@@ -316,9 +316,9 @@
 
 
         aoperand: ["regindoffset | regindirect | pcinc"
-                  + " | peek | pop | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
+                  + " | peek | pop | spindirect | pick | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal"],
         boperand: ["regindoffset | regindirect | pcinc"
-                  + " | push | peek | spindirect | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal_nextword"],
+                  + " | push | peek | spindirect | pick | reg_ex | reg_pc | reg_sp | reg_gpr | literalindirect | literal_nextword"],
 
         labels: ["maybelabels | label"],
         maybelabels: ["label /\\s*/ labels"],
@@ -403,6 +403,19 @@
               })(expr);
           }
         ],
+
+        pick: ["/\\s*((;sp\\s*\\+\\s*)|pick)\\s*/ expression /\\s*/",
+          function(_m) { 
+                  CountAssembledWords(1);
+                  return (function(e)
+                  {
+                      return function()
+                      {
+                          EmitWord(eval(e));
+                          return 0x1a;
+                      }
+                  })(_m[1][0]);                  
+              } ],
 
         spindirect: ["/\\[\\s*((;sp\\s*\\+\\s*)|pick)\\s*/ expression /\\s*\\]/",
           function(_m) { 
