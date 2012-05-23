@@ -117,7 +117,7 @@
     
     function LogJSR( _type )
     {
-        if(Emulator.JSRHistory)
+        if(Emulator.JSRHistory && Emulator.JSRHistoryMax)
         {
             if(Emulator.JSRHistory.length>Emulator.JSRHistoryMax)
             {
@@ -567,7 +567,7 @@
             while ((!Emulator.paused) && ((Emulator.cycles - cycles) < 1000))
             {
                 Emulator.Step();
-                if( Emulator.BackTrace )
+                if( Emulator.BackTrace && Emulator.BackTraceMax)
                 {
                     if(Emulator.BackTrace.length > Emulator.BackTraceMax)
                     {
