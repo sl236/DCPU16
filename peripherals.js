@@ -24,8 +24,10 @@ Peripherals.push(function()
 
     $('#emulation').html('<canvas class="crisp" id="screen" width="576" height="448" />');
     var screen = document.getElementById('screen');
-    var screenDC = screen.getContext('2d');
+    var screenGL = null;
+    var screenDC = null;    
     var defaultImage = null;
+    var defaultImageTexture = 0;
 
     var defaultFont =
             [
@@ -61,51 +63,57 @@ Peripherals.push(function()
     var blinkOn = 0;
     var blinkMin = 0;
     var blinkMax = 0x179;
-
-    for (var i = 0; i < 256; i++)
+    var screenDClastFS='rgb(0,0,0)';
+    var borderColour=0;
+    var glProgram=null;
+    var glProgramTextureUniform=0;
+    var glProgramPaletteUniform=0;
+    var screenPosID = null;
+    var screenGlyphData = null;
+    var screenIndices = null;
+    var enableWebGL = 0;
+    
+    try
     {
-        glyphCache[i] = [];
-        for (var j = 0; j < 16; j++)
+        screenPosID = new Float32Array( 32 * 12 * 4 * 4 );
+        screenGlyphData = new Float32Array( 32 * 12 * 4 * 4 );
+        screenIndices = new Uint16Array( 32 * 12 * 4 + 12 * 2 );
+        var vpos = 0;
+        var ipos = 0;
+        for( var y = 0; y < 12; y++ )
         {
-            var vch = document.createElement('canvas');
-            vch.setAttribute('width', 2);
-            vch.setAttribute('height', 8);
-            vch.setAttribute('class', 'crisp');
-            var vchDC = vch.getContext('2d');
-            glyphCache[i][j] = { ch: vch, chDC: vchDC, ok: 0, td: null };
-        }
+            screenIndices[ipos++] = vpos;
+            for( var x = 0; x < 32; x++ )
+            {
+                screenPosID[vpos*4+0]=x*4;
+                screenPosID[vpos*4+1]=y*8;
+                screenPosID[vpos*4+2]=0;
+                screenPosID[vpos*4+3]=0;
+                screenIndices[ipos++]=vpos++;
+                screenPosID[vpos*4+0]=x*4;
+                screenPosID[vpos*4+1]=y*8+8;
+                screenPosID[vpos*4+2]=0;
+                screenPosID[vpos*4+3]=8;
+                screenIndices[ipos++]=vpos++;
+                screenPosID[vpos*4+0]=x*4+4;
+                screenPosID[vpos*4+1]=y*8;
+                screenPosID[vpos*4+2]=4;
+                screenPosID[vpos*4+3]=0;
+                screenIndices[ipos++]=vpos++;
+                screenPosID[vpos*4+0]=x*4+4;
+                screenPosID[vpos*4+1]=y*8+8;
+                screenPosID[vpos*4+2]=4;
+                screenPosID[vpos*4+3]=8;
+                screenIndices[ipos++]=vpos++;
+            }
+            screenIndices[ipos++] = vpos-1;
+        }    
     }
+    catch(e) { }
+    
+    enableWebGL = enableWebGL && screenPosID && screenGlyphData && screenIndices && Console.webGLSetup && window.WebGLRenderingContext;
 
-    for (var i = 0; i < 16; i++)
-    {
-        var r = (i & 4) ? 0xAA : 0;
-        var g = (i & 2) ? 0xAA : 0;
-        var b = (i & 1) ? 0xAA : 0;
-        if (i & 8)
-        {
-            r += 0x55;
-            g += 0x55;
-            b += 0x55;
-        }
-        else if (i == 6)
-        {
-            b += 0x55;
-        }
-        palette[i] = [r, g, b];
-        paletteStyle[i] = 'rgb(' + r + ',' + g + ',' + b + ')';
-        defaultPalette[i] = (((r >> 4) & 0xF) << 0x8) | (((g >> 4) & 0xF) << 0x4) | ((b >> 4) & 0xF);
-    }
-
-    screenDC.scale(4, 4);
-    screenDC.translate(8, 8);
-    screenDC.mozImageSmoothingEnabled = false;
-    screenDC.save();
-    screenDC.fillStyle = 'rgb(0,0,0)';
-    screenDC.fillRect(-8, -8, 128 + 8 * 2, 96 + 8 * 2);
-    screenDC.restore();
-    var screenDClastFS = 'rgb(0,0,0)';
-    var borderColour = 0;
-
+    
     function getGlyph(_idx, _fgColour)
     {
         var glyph = glyphCache[_idx][_fgColour];
@@ -248,11 +256,11 @@ Peripherals.push(function()
                         updateScreen(i, Emulator.mem[i]);
                     }
                 }
-            }
-
-            if (borderColour == entry)
-            {
-                updateBorder(entry);
+                
+                if(borderColour==entry)
+                {
+                    updateBorder(entry);
+                }
             }
         }
     }
@@ -270,7 +278,7 @@ Peripherals.push(function()
         screenDC.fillRect(128, 0, 8, 96);
         screenDC.fillRect(-8, 96, 128 + 8 * 2, 8);
     }
-
+    
     function onInterrupt()
     {
         switch (Emulator.regs[0])
@@ -282,6 +290,11 @@ Peripherals.push(function()
                     {
                         Emulator.MemoryHooks[i] = null;
                     }
+                }
+                
+                if( Emulator.regs[1] && !vramBase )
+                {
+                    updateBorder(borderColour);                
                 }
                 
                 vramBase = Emulator.regs[1];
@@ -387,6 +400,156 @@ Peripherals.push(function()
         return 0;
     }
     
+    var contextLostListening = 0;
+
+    function resetContext()
+    {
+        if( screenDC )
+        {
+            screenDC.restore();
+        }
+        
+        screenDC=null;
+        screenGL=null;
+        glProgram=null;
+        glProgramTextureUniform=0;
+        glProgramPaletteUniform=0;
+        defaultImageTexture = 0;
+        try
+        {
+            if(enableWebGL)
+            {
+                screenGL = screen.getContext('webgl');
+                if( screenGL )
+                {
+                    glProgram=Console.webGLSetup(screenGL,'vshader','fshader',['vPosUV','vPaletteIndex'],[0,0,0,1],10000);
+                    if( glProgram )  
+                    {
+                        glProgramTextureUniform=screenGL.getUniformLocation(glProgram, 'texture');
+                        glProgramPaletteUniform=screenGL.getUniformLocation(glProgram, 'palette');
+                        defaultImageTexture = Console.loadImageTexture('LEM1802.png');
+                        screenGL.bindBuffer(screenGL.ARRAY_BUFFER, screenPosID);
+                        screenGL.vertexAttribPointer(0,4,screenGL.FLOAT,false,0,0);
+                        screenGL.bindBuffer(screenGL.ELEMENT_ARRAY_BUFFER, screenIndices);
+                        screenGL.uniform1i(gl.getUniformLocation(glProgram, "texture"), 0);
+                        screenGL.uniform1i(gl.getUniformLocation(glProgram, "palette"), 1);
+                        screenGL.uniform1f(gl.getUniformLocation(glProgram, "uBlink"),  1);
+                        screenGL.bindBuffer(screenGL.ARRAY_BUFFER, 0);
+                    }
+                }
+                if( !glProgram || !glProgramTextureUniform || !glProgramPaletteUniform || !defaultImageTexture )
+                {
+                    screenGL = null;
+                }
+            }
+        }
+        catch(e) { }
+
+        if(screenGL)
+        {
+            if( !contextLostListening )
+            {
+                contextLostListening = 1;
+                screen.addEventListener("webglcontextlost",function(event)
+                {
+                    event.preventDefault();
+                    resetContext();
+                },false);
+                screen.addEventListener("webglcontextrestored",resetContext,false);
+            }
+        }
+        else
+        {
+            screenDC=screen.getContext('2d');
+            screenDC.save();
+            screenDC.scale(4,4);
+            screenDC.translate(8,8);
+            screenDC.imageSmoothingEnabled=false;
+            screenDC.mozImageSmoothingEnabled=false;
+            screenDC.save();
+            screenDC.fillStyle='rgb(0,0,0)';
+            screenDC.fillRect(-8,-8,128+8*2,96+8*2);
+            screenDC.restore();
+        }
+
+        for(var i=0;i<256;i++)
+        {
+            glyphCache[i]=[];
+            for(var j=0;j<16;j++)
+            {
+                var vch=document.createElement('canvas');
+                vch.setAttribute('width',2);
+                vch.setAttribute('height',8);
+                vch.setAttribute('class','crisp');
+                var vchDC=vch.getContext('2d');
+                glyphCache[i][j]={ ch: vch,chDC: vchDC,ok: 0,td: null };
+            }
+        }
+
+        for(var i=0;i<16;i++)
+        {
+            var r=(i&4)?0xAA:0;
+            var g=(i&2)?0xAA:0;
+            var b=(i&1)?0xAA:0;
+            if(i&8)
+            {
+                r+=0x55;
+                g+=0x55;
+                b+=0x55;
+            }
+            else if(i==6)
+            {
+                b+=0x55;
+            }
+            palette[i]=[r,g,b];
+            paletteStyle[i]='rgb('+r+','+g+','+b+')';
+            defaultPalette[i]=(((r>>4)&0xF)<<0x8)|(((g>>4)&0xF)<<0x4)|((b>>4)&0xF);
+        }
+
+        if(vramBase!=0)
+        {
+            for(var i=vramBase;i<(vramBase+0x180);i++)
+            {
+                updateScreen(i,Emulator.mem[i]);
+            }
+        }
+        else
+        {
+            if(defaultImage)
+            {
+                screenDC.drawImage(defaultImage,-8,-8);
+            }
+        }
+        if(fontBase!=0)
+        {
+            for(var i=fontBase;i<(fontBase+0x100);i++)
+            {
+                updateCharMap(i,Emulator.mem[i]);
+            }
+        }
+        else
+        {
+            for(var i=0;i<0x100;i++)
+            {
+                updateCharMap(i,defaultFont[i]);
+            }
+        }
+        if(paletteBase!=0)
+        {
+            for(var i=paletteBase;i<(paletteBase+0x10);i++)
+            {
+                updatePalette(i,Emulator.mem[i]);
+            }
+        }
+        else
+        {
+            for(var i=0;i<0x10;i++)
+            {
+                updatePalette(i,defaultPalette[i]);
+            }
+        }
+    }    
+    
     function onReset()
     {
         if(vramBase!=0)
@@ -397,10 +560,6 @@ Peripherals.push(function()
             }
         }
         vramBase=0;
-        if( defaultImage )
-        {
-        	screenDC.drawImage( defaultImage, -8, -8 );
-        }
         if(fontBase!=0)
         {
             for(var i=fontBase;i<(fontBase+0x100);i++)
@@ -409,10 +568,6 @@ Peripherals.push(function()
             }
         }
         fontBase=0;
-        for(var i=0;i<0x100;i++)
-        {
-            updateCharMap(i,0);
-        }
         if(paletteBase!=0)
         {
             for(var i=paletteBase;i<(paletteBase+0x10);i++)
@@ -421,39 +576,44 @@ Peripherals.push(function()
             }
         }
         paletteBase=0;
-        for(var i=0;i<0x10;i++)
-        {
-            updatePalette(i,defaultPalette[i]);
-        }
-        updateBorder( 0 );            
+        resetContext();
     }
-    
+        
     function onToggleBlink()
     {
         blinkOn = !blinkOn;
         if( vramBase )
         {
-            while( !(Emulator.mem[blinkMin] & 0x80) && (blinkMin <= blinkMax) )
+            if( screenGL )
             {
-                blinkMin++;
+                screenGL.uniform1f(gl.getUniformLocation(glProgram, "uBlink"),  blinkOn ? 1.0 : 0.0);
             }
-
-            while(!(Emulator.mem[blinkMax]&0x80)&&(blinkMin<=blinkMax))
+            else
             {
-                --blinkMax;
-            }
-            
-            for(var i=blinkMin; i<=blinkMax; i++)
-            {
-                if( Emulator.mem[i] & 0x80 )
+                while(!(Emulator.mem[blinkMin]&0x80)&&(blinkMin<=blinkMax))
                 {
-                    updateScreen( i, Emulator.mem[i] );
+                    blinkMin++;
                 }
+
+                while(!(Emulator.mem[blinkMax]&0x80)&&(blinkMin<=blinkMax))
+                {
+                    --blinkMax;
+                }
+
+                for(var i=blinkMin;i<=blinkMax;i++)
+                {
+                    if(Emulator.mem[i]&0x80)
+                    {
+                        updateScreen(i,Emulator.mem[i]);
+                    }
+                }            
             }
         }
         
         setTimeout( onToggleBlink, blinkOn ? 650 : 350 );
     }
+    
+    resetContext();
     
     var deviceDesc = // http://dcpu.com/highnerd/lem1802.txt
     {

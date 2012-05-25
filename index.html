@@ -1,8 +1,36 @@
 <html><head>
 <link type="text/css" rel="stylesheet" href="style.css" />
+<script id="vshader" type="x-shader/x-vertex">
+uniform float uBlink;
+attribute vec4  vPosID;
+attribute vec4  vGlyphData;
+varying mediump vec2 oGlyphUV;
+varying mediump vec2 oPaletteFGUV;
+varying mediump vec2 oPaletteBGUV;
+void main()
+{
+    gl_Position = vPosID.xy;
+    oGlyphUV = vec2( vGlyphData.x + vPosID.z, vPosID.w );
+    oPaletteBGUV = vec2( vGlyphData.z, 0.0 );
+    oPaletteFGUV = mix( vec2( vGlyphData.y, 0.0 ), oPaletteBGUV, vGlyphData.z * (1.0-uBlink) );
+}
+</script>
+<script id="fshader" type="x-shader/x-fragment">
+precision lowp float;
+uniform sampler2D texture;
+uniform sampler2D palette;
+varying mediump vec2 oGlyphUV;
+varying mediump vec2 oPaletteFGUV;
+varying mediump vec2 oPaletteBGUV;
+void main()
+{
+    gl_FragColor = mix( texture2D( palette, oPaletteBGUV ), texture2D( palette, oPaletteFGUV ), texture2D( texture, oGlyphUV ).w );
+}
+</script>
 <script language="javascript" src="jquery.js"></script>
 <script language="javascript" src="parser.js"></script>
 <script language="javascript" src="globals.js"></script>
+<script language="javascript" src="J3DI.js"></script>
 <script language="javascript" src="util.js"></script>
 <script language="javascript" src="emulator.js"></script>
 <script language="javascript" src="assembler.js"></script>
