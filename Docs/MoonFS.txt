@@ -22,6 +22,7 @@ def inode_entity_size_low	6
 def inode_refcount			7
 def inode_parent			8
 def inode_reserved_area		9
+
 def inode_header_size		12
 
 ; This 12-word header is immediately followed by the data area. 
@@ -47,3 +48,11 @@ def inode_flag_simple	(1<<4)
 ; To open a file: for a given filename, xor all the characters together, then take that value modulo the maximum number of 
 ; directory records (determined by sector size) to be the index of the first directory record the file can occur. 
 ; Search forwards until either the directory record is located or an empty record is encountered.
+
+; directory entry structure
+def direntry_cname			0	; filename, two chars per word
+def direntry_inode			7	; inode for this entry
+def direntry_cached_flags	8	; type is immutable so should be safe, other bits might be out of date
+def direntry_next			9	; next used direntry, for directory traversal
+
+def direntry_structure_size	10
