@@ -358,13 +358,24 @@ moonfs_inode_getid_impl:
 	ifn a, y							; tried everywhere?
 		b 1b							; nope. go around.
 2:
+	jsr moonfs_discard_sector			; done with inode
 	set a, moonfs_err_not_found
 	set pc, pop	
 1:
+	jsr moonfs_discard_sector			; done with inode
 	set a, 0
 	set b, [a+inode_header_size+direntry_inode]
 	set pc, pop
-	
+
+def fopen_stored_j		fopen_locals_size+4
+def fopen_stored_i		fopen_locals_size+3
+def fopen_stored_a		fopen_locals_size+2
+def fopen_stored_b		fopen_locals_size+1
+def fopen_stored_x		fopen_locals_size+0
+def fopen_locals_size	9
+def fopen_curr_path		8
+def fopen_curr_inode	7
+def fopen_name_buf		0
 ; -- z; a: filepath (null-terminated, unpacked, absolute path, / as dir separator, leading / stripped).  
 ; --    b: fs_open_mode  
 ; --    on success, returns handle in b. Other registers may be trashed.
@@ -372,32 +383,57 @@ moonfs_fopen_impl:
 	ifn b, fs_open_mode_r
 		set pc, moonfs_not_implemented ; todo
 	
-	set push, j	; preserve a, b, i, j
-	set push, i	;
-	set push, a ;
-	set push, b	;
-	sub sp, 7	; space on stack for packed filename
-	
-1:
-	set i, a	; source
+	set push, j						;	preserve a, b, i, j, x
+	set push, i						;
+	set push, a						;
+	set push, b						;
+	set push, x						;
+	sub sp, fopen_locals_size		;	reserve stack space for locals
+	set [sp+fopen_curr_path], a		;
+	set [sp+fopen_curr_inode], 2	;	initially, the root inode. TODO: this is already in memory
+
+1:	; locate next '/' character or end of string. Look up corresponding inode id.
+	set j, [sp+fopen_curr_path]		; source
 2:
-	ife [i], 0		; null terminator?
-		b 1f		; we have a filename
-	ifn [i], '/'
-		sti	pc, 2b
+	ife [j], 0						; null terminator?
+		b 1f						; we have a filename
+	ifn [j], '/'					; dir separator?
+		sti	pc, 2b					; nope, go around
+	set [j], 0						; temporarily replace with null terminator
+	set i, [sp+fopen_curr_path]		; packed string source
+	set [sp+fopen_curr_path], j		; store separator location
+	set j, i						; want source in j
+	set push, 1b					; return to next path component
+	set pc, moonfs_fopen_impl_pack_and_lookup
+	
+1:	; got a filename
+	jsr moonfs_fopen_impl_pack_and_lookup	; get its inode
+	
 	
 	sub pc, 1 ; todo
-	
-	set i, sp	; target
-	set j, a	; source
-	set x, 7	; maximum length
-	jsr strnpack_fill	; pack
-	
-	sub pc, 1 ; todo
-	
-1:
-	sub pc, 1 ; todo
-	
+
+moonfs_fopen_impl_exit:
+	add sp, fopen_locals_size
+	set x, pop
+	set b, pop
+	set i, pop		; skip restoring a
+	set i, pop
+	set j, pop
+	set pc, pop
+
+moonfs_fopen_impl_pack_and_lookup:
+	set b, sp							; packed name buffer
+	add b, 1
+	set i, b
+	set x, 7							; maximum packed string length
+	jsr strnpack_fill					; pack that
+	set a, [sp+(fopen_curr_inode+1)]	; source inode
+	jsr moonfs_inode_getid_impl			; get inode id
+	set [sp+(fopen_curr_inode+1)], b	; store inode ID.
+	ifn a, 0							; error?
+		set [sp], moonfs_fopen_impl_exit	; yup. return to exit handler
+	set pc, pop							; return normally
+
 ; --
 moonfs_fread_impl:
 	set pc, moonfs_not_implemented ; todo
