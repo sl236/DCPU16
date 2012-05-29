@@ -65,6 +65,7 @@ def moonfs_err_write			3
 def moonfs_err_bad_magic		4
 def moonfs_err_fs_unmounted		5
 def moonfs_err_not_found		6
+def moonfs_err_invalid_handle	7
 
 def moonfs_handle_inode			0
 def moonfs_handle_pos			1
@@ -367,15 +368,26 @@ moonfs_inode_getid_impl:
 	set b, [a+inode_header_size+direntry_inode]
 	set pc, pop
 
-def fopen_stored_j		fopen_locals_size+4
-def fopen_stored_i		fopen_locals_size+3
-def fopen_stored_a		fopen_locals_size+2
-def fopen_stored_b		fopen_locals_size+1
-def fopen_stored_x		fopen_locals_size+0
-def fopen_locals_size	9
-def fopen_curr_path		8
-def fopen_curr_inode	7
-def fopen_name_buf		0
+; --
+def moonfs_fdesc_inode			0
+def moonfs_fdesc_mode			1
+def moonfs_fdesc_pos_sector		2
+def moonfs_fdesc_pos_offset		3
+def moonfs_fdesc_errcode		4
+def moonfs_fdesc_curr_sector_id	5
+def moonfs_fdesc_memhandle		6
+def moonfs_fdesc_struct_size	(moonfs_fdesc_memhandle+1)
+
+def moonfs_fopen_locals_size	9
+def moonfs_fopen_curr_path		8
+def moonfs_fopen_curr_inode		7
+def moonfs_fopen_name_buf		0
+
+def moonfs_fopen_stored_j		moonfs_fopen_locals_size+4
+def moonfs_fopen_stored_i		moonfs_fopen_locals_size+3
+def moonfs_fopen_stored_a		moonfs_fopen_locals_size+2
+def moonfs_fopen_stored_b		moonfs_fopen_locals_size+1
+def moonfs_fopen_stored_x		moonfs_fopen_locals_size+0
 ; -- z; a: filepath (null-terminated, unpacked, absolute path, / as dir separator, leading / stripped).  
 ; --    b: fs_open_mode  
 ; --    on success, returns handle in b. Other registers may be trashed.
@@ -388,32 +400,69 @@ moonfs_fopen_impl:
 	set push, a						;
 	set push, b						;
 	set push, x						;
-	sub sp, fopen_locals_size		;	reserve stack space for locals
-	set [sp+fopen_curr_path], a		;
-	set [sp+fopen_curr_inode], 2	;	initially, the root inode. TODO: this is already in memory
+	sub sp, moonfs_fopen_locals_size	;	reserve stack space for locals
+	set [sp+moonfs_fopen_curr_path], a	;
+	set [sp+moonfs_fopen_curr_inode], 2	;	initially, the root inode. TODO: this is already in memory
 
 1:	; locate next '/' character or end of string. Look up corresponding inode id.
-	set j, [sp+fopen_curr_path]		; source
+	set j, [sp+moonfs_fopen_curr_path]	; source
 2:
 	ife [j], 0						; null terminator?
 		b 1f						; we have a filename
 	ifn [j], '/'					; dir separator?
 		sti	pc, 2b					; nope, go around
 	set [j], 0						; temporarily replace with null terminator
-	set i, [sp+fopen_curr_path]		; packed string source
-	set [sp+fopen_curr_path], j		; store separator location
+	set i, [sp+moonfs_fopen_curr_path]		; packed string source
+	set [sp+moonfs_fopen_curr_path], j		; store separator location
 	set j, i						; want source in j
 	set push, 1b					; return to next path component
 	set pc, moonfs_fopen_impl_pack_and_lookup
 	
 1:	; got a filename
-	jsr moonfs_fopen_impl_pack_and_lookup	; get its inode
+	jsr moonfs_fopen_impl_pack_and_lookup					; get its inode	
+	set [sp+moonfs_fopen_curr_inode], b							; stash that
+		
+	set a, b				; fetch it
+	set b, 0				; don't lock
+	jsr moonfs_fetch_sector
+	ifn a, 0				; error?
+		set pc, moonfs_fopen_impl_exit	; bail
+	set a, b	; start of inode
 	
+	ife [a+inode_entity_size_high], 0	; todo: files > 64kb
+		b 1f
+	jsr moonfs_discard_sector
+	set a, moonfs_err_not_implemented	
+	set pc, moonfs_fopen_impl_exit
+1:
+
+	ifn [a+inode_entity_size_low], 0	; todo: opening an empty file
+		b 1f
+	jsr moonfs_discard_sector
+	set a, moonfs_err_not_implemented	
+	set pc, moonfs_fopen_impl_exit
+1:
+
+	set push, [a+inode_header_size]							; store first sector location
+	jsr moonfs_discard_sector								; release cacheline
 	
-	sub pc, 1 ; todo
+	set x, moonfs_fdesc_struct_size							; memory for descriptor
+	jsr kmalloc												; allocate it
+	
+	set a, [x+kerntable_block_start]						; block start
+	set [a+moonfs_fdesc_pos_sector], 0						; initial position
+	set [a+moonfs_fdesc_pos_offset], 0
+	set [a+moonfs_fdesc_curr_sector_id], pop				; initial sector
+	set [a+moonfs_fdesc_inode], b							; inode
+	set [a+moonfs_fdesc_mode], [sp+moonfs_fopen_stored_b]	; mode
+	set [a+moonfs_fdesc_errcode], 0							; initial error state
+	set [a+moonfs_fdesc_memhandle], x						; memory handle
+	set [sp+moonfs_fopen_stored_x], a						; return file descriptor in X
+	
+	; drop through to moonfs_fopen_impl_exit
 
 moonfs_fopen_impl_exit:
-	add sp, fopen_locals_size
+	add sp, moonfs_fopen_locals_size
 	set x, pop
 	set b, pop
 	set i, pop		; skip restoring a
@@ -422,21 +471,102 @@ moonfs_fopen_impl_exit:
 	set pc, pop
 
 moonfs_fopen_impl_pack_and_lookup:
-	set b, sp							; packed name buffer
+	set b, sp								; packed name buffer
 	add b, 1
 	set i, b
-	set x, 7							; maximum packed string length
-	jsr strnpack_fill					; pack that
-	set a, [sp+(fopen_curr_inode+1)]	; source inode
-	jsr moonfs_inode_getid_impl			; get inode id
-	set [sp+(fopen_curr_inode+1)], b	; store inode ID.
-	ifn a, 0							; error?
+	set x, 7								; maximum packed string length
+	jsr strnpack_fill						; pack that
+	set a, [sp+(moonfs_fopen_curr_inode+1)]	; source inode
+	jsr moonfs_inode_getid_impl				; get inode id
+	set [sp+(moonfs_fopen_curr_inode+1)], b	; store inode ID.
+	ifn a, 0								; error?
 		set [sp], moonfs_fopen_impl_exit	; yup. return to exit handler
-	set pc, pop							; return normally
+	set pc, pop								; return normally
 
 ; --
+def moonfs_fread_locals_size	(6)
+def moonfs_fread_sector_size	5
+def moonfs_fread_sector_mask	4
+def moonfs_fread_dest_end		3
+def moonfs_fread_dest			2
+def moonfs_fread_words			1
+def moonfs_fread_handle			0
+
+def moonfs_fread_stored_b	(moonfs_fread_locals_size+3)
+def moonfs_fread_stored_c	(moonfs_fread_locals_size+2)
+def moonfs_fread_stored_i	(moonfs_fread_locals_size+1)
+def moonfs_fread_stored_j	(moonfs_fread_locals_size+0)
+; --
+; z; a: handle  b: dest address  c: word count    reads to EOF or C, returns actual word count read in x
 moonfs_fread_impl:
-	set pc, moonfs_not_implemented ; todo
+	set push, b								; preserve caller registers
+	set push, c
+	set push, i
+	set push, j	
+	sub sp, moonfs_fread_locals_size		; space for locals
+
+	ife c, 0								; early bail for zero-size read
+		set pc, moonfs_fread_impl_complete	; exit
+	
+	set [sp+moonfs_fread_handle], a			; store read handle			
+	set [sp+moonfs_fread_dest], b			; destination pointer
+	add b, c								; end of destination
+	set [sp+moonfs_fread_dest_end], b		; store it
+	set a, [z+moonfs_fs_device]				; device ID
+	set a, [a+fdd_sector_size]				; sector size
+	set [sp+moonfs_fread_sector_size], a	; store a copy where we can quickly get it
+	set [sp+moonfs_fread_words], c			; store desired word count
+		
+1:
+	set a, [sp+moonfs_fread_handle]			; file descriptor
+	set a, [a+moonfs_fdesc_pos_sector]		; source sector
+	set b, 0								; don't lock it
+	sub pc, 1	; todo: look up in inode
+	jsr moonfs_fetch_sector					; fetch it
+	ifn a, 0								; error?
+		set pc, moonfs_fread_impl_exit		; bail	
+	; sector in b
+	
+	set a, [sp+moonfs_fread_handle]			; file descriptor
+	set c, [sp+moonfs_fread_sector_size]	; sector size
+	sub c, [a+moonfs_fdesc_pos_offset]		; words available in this sector
+	ifl [sp+moonfs_fread_words], c			; more than we want to read?
+		set c, [sp+moonfs_fread_words]		; clamp		
+	sub [sp+moonfs_fread_words], c			; record read amount
+	add [a+moonfs_fdesc_pos_offset], c		; advance file offset in sector
+	ifl [a+moonfs_fdesc_pos_offset], [sp+moonfs_fread_sector_size]	; end of sector?
+		b 2f									; nope
+	set [a+moonfs_fdesc_pos_offset], 0		; advance file sector
+	add [a+moonfs_fdesc_pos_sector], 1
+2:
+	set i, b								; source sector
+	add i, [a+moonfs_fdesc_pos_offset]		; source data
+	set j, [sp+moonfs_fread_dest]			; destination
+	add c, j								; end of destination
+2:
+	sti [j], [i]							; copy
+	ifn j, c								; done?
+		b 2b								; go around
+	jsr moonfs_discard_sector				; release the cacheline
+	ifn a, 0								; error?
+		set pc, moonfs_fread_impl_exit		; bail
+	ife [sp+moonfs_fread_words], 0			; read everything?
+		set pc, moonfs_fread_impl_complete	; return
+	
+	; todo: source guaranteed sector aligned at this point, so read complete sectors directly into memory, if we can.
+	set pc, 1b	; read next sector
+
+moonfs_fread_impl_complete:
+	set a, 0	; success
+	; drop through
+	
+moonfs_fread_impl_exit:
+	add sp, moonfs_fread_locals_size
+	set j, pop
+	set i, pop
+	set c, pop
+	set b, pop
+	set pc, pop
 
 ; --	
 moonfs_fwrite_impl:
@@ -450,9 +580,20 @@ moonfs_fseek_impl:
 moonfs_ftell_impl:
 	set pc, moonfs_not_implemented ; todo
 
-; --
+; -- z; handle in a
 moonfs_fclose_impl:
-	set pc, moonfs_not_implemented ; todo
+	set push, x
+	set x, [a+moonfs_fdesc_memhandle]
+	ifn [x+kerntable_block_start], a
+		b 1f
+	set a, 0
+	set push, 2f
+	set pc, kfree
+1:
+	set a, moonfs_err_invalid_handle	
+2:
+	set x, pop
+	set pc, pop
 
 ; --
 moonfs_fflush_impl:
