@@ -262,7 +262,7 @@
               return [ _m[0] ];
           }
         ],
-        stringchar: ["/[^\"'\\\\]/", function(_m) { return _m[0].charCodeAt(0); } ],
+        stringchar: ["/[^\"\\\\]/", function(_m) { return _m[0].charCodeAt(0); } ],
         escape: ["'\\' escapecode", function(_m) { return _m[1]; } ],
         escapecode: ["numericescape | onecharescape"],
         onecharescape: ["/./",
@@ -783,7 +783,51 @@
                 var rule = 'START';
                 if( datmatch && datmatch.length > 1 )
                 {
-                    lineparts = datmatch[1].split(',');
+                    var tmp = datmatch[1];
+                    lineparts = [];
+                    var str = '';
+                    var quote = 0;
+                    var escape = 0;
+                    for( var k = 0; k < tmp.length; k++ )
+                    {
+                    	switch( tmp[k] )
+                    	{
+                    		case '"':
+                    				str += '"';
+                    				if( !escape )
+                    				{
+                    					quote = !quote;
+                    				}
+                    				escape = 0;
+                    			break;
+                    		case ',':
+                    				if( escape || quote)
+                    				{
+                    					str += ',';
+                    				}
+                    				else
+                    				{
+                    					lineparts.push(str);
+                    					str = '';
+                    				}
+                    				escape = 0;
+                    			break;
+                    		case '\\':
+                    				str += '\\';
+                    				escape = 1;
+                    			break;
+                    		default:
+                    				str += tmp[k];
+                    				escape = 0;
+                    			break;
+                    	}
+                    }
+                    
+                    if( str.length )
+                    {
+                    	lineparts.push(str);
+                    }                    
+                                        
                     rule = 'dataunit';
                 }
 
