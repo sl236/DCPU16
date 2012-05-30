@@ -12,6 +12,8 @@
     	Console.Log("Memory breakpoint hit at " + Console.H16(_addr) + " with " + Console.H16(_value));
     	Emulator.paused = true;
     }
+    
+    Console.MBP_FN = mem_write_breakpoint;
 
     // -------------
     // Debug console
@@ -66,7 +68,7 @@
       }
   },
 
-    mbp:
+  mbp:
   {
       help: 'mbp addr\nToggles a memory write breakpoint at addr.',
       fn: function(_args)

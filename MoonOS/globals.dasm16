@@ -18,6 +18,8 @@ clock_time:				dat 0, 0
 ctrl_held:				dat 0
 ctrl_keypress:			dat 0
 
+debug_device_id:		dat 0xffff
+
 def FDD_MAX_DEVICES 4
 def FDD_MAX_OPS		32
 fdd_device_count:		dat 0

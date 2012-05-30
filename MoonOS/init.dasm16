@@ -105,7 +105,12 @@ init_hw:
 	ife b, 0x74fa
 	ife a, 0x4cae
 		set pc, init_hw_hmd2043
-
+	
+	; Moon debug device - see peripherals.js
+	ife b, 0x4d6f
+	ife a, 0x6f6e
+		set pc, init_hw_debugger
+	
 init_hw_next:
 	add i, 1							; next device ID
 	set pc, init_hw						; go around
@@ -160,7 +165,19 @@ init_hw_hmd2043:
 	hwi i								; send that	
 	set [fdd_media_present+x], b		; store result	
 	set pc, init_hw_next				; done
-			
+
+
+init_hw_debugger:
+	set [debug_device_id], i			; store device ID
+	set a, 0							; SET MBP[B]
+	set b, 0							; trap on attempts to overwrite 0x00..0x1d
+1:
+	hwi i
+	add b, 1
+	ifn b, 0x1d
+		b 1b
+	set pc, init_hw_next				; done
+
 init_hw_end:
 	; -- done initialising devices
 	ife [screen_device_id], 0xffff  	; do we have a screen?

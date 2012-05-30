@@ -1145,3 +1145,58 @@ Peripherals.push(function( _debugCommands )
     
     Emulator.Devices.push(deviceDesc);
 });
+
+
+// -------------
+// Debug console interface
+// -------------    
+
+Peripherals.push(function()
+{
+    var deviceDesc=
+    {
+        hwType: 0x4d6f6f6e,
+        hwRev: 0x1,
+        hwManufacturer: 0x4d6f6f6e,
+        
+        hwI: function()
+        {
+            switch(Emulator.regs[0])
+            {
+                case 0: // SET MBP[B]
+                    if( !Emulator.MemoryHooks[Emulator.regs[1]] )
+           	        {
+              		    Emulator.MemoryHooks[Emulator.regs[1]] = Console.MBP_FN;
+           	        }
+                    break;
+
+                case 1: // CLEAR MBP[B]
+                      if( Emulator.MemoryHooks[Emulator.regs[1]] == Console.MBP_FN )
+                      {
+           		        Emulator.MemoryHooks[Emulator.regs[1]] = null;
+                      }
+                    break;
+                    
+                case 2: // SET BP, B
+                      Emulator.regs[12] = Emulator.regs[1];
+                    break;                  
+                    
+                case 3: // SET B, BP
+                      Emulator.regs[1] = Emulator.regs[12];
+                    break;                  
+                    
+                default:
+                        Console.Log("Debug device received HWI " + Console.H16(Emulator.regs[0]) );
+                        Emulator.paused = true;
+                    break;
+            }
+            return 0;
+        },
+
+        hwReset: function()
+        {
+        }
+    };
+    
+    Emulator.Devices.push(deviceDesc);
+});
