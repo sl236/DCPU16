@@ -23,7 +23,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-function(){
+(function(){
 
 //
 // initWebGL
@@ -610,4 +610,4 @@ Framerate.prototype.snapshot = function()
     }
 }
 
-};
+})();
