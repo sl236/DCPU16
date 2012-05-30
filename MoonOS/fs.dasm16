@@ -101,8 +101,7 @@ moonfs_mount_impl:
 	mul b, 6						; and six sectors' worth of memory (ouch)
 	add x, b
 	jsr kmalloc
-	set b, x						; block handle
-	set b, [y+kerntable_block_start]; its start
+	set b, [x+kerntable_block_start]; block start
 	
 	set [b+moonfs_fs_api_ptr], moonfs_api
 	set [b+moonfs_fs_device], a
@@ -659,7 +658,6 @@ moonfs_umount_internal:
 	ifn [b+moonfs_fs_cache0_sector], 0xffff
 		jsr moonfs_umount_lock_cache
 	
-	set a, pop
 	set x, [z+moonfs_fs_device]
 	set [x+fdd_mounted_fs], 0
 	sub [z+moonfs_fs_refcount], 1

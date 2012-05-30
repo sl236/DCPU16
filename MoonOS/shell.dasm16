@@ -196,6 +196,28 @@ shellproc_verb_list:
 	set pc, pop
 4:	dat ~"Known commands:\n", 0
 
+; -- mount
+1:  dat 1f, 2f, ~"mount", 0
+2:  
+	; todo
+	set a, 0
+	jsr moonfs_mount_impl
+	ifn a, 0
+		b 2f
+	set x, 3f
+	set push, z
+	jsr term_printf	
+	set z, pop
+	set pc, pop
+2:
+	set push, a
+	set x, 2f
+	jsr term_printf
+	set a, pop
+	set pc, pop
+2:	dat ~"Error: %x\n", 0
+3:	dat ~"Mounted (%x)\n", 0
+
 ; -- clear screen
 1:  dat 1f, 2f, ~"clear", 0
 2:  jsr term_clear
