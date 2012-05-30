@@ -388,6 +388,29 @@ def moonfs_fopen_stored_i		moonfs_fopen_locals_size+3
 def moonfs_fopen_stored_a		moonfs_fopen_locals_size+2
 def moonfs_fopen_stored_b		moonfs_fopen_locals_size+1
 def moonfs_fopen_stored_x		moonfs_fopen_locals_size+0
+
+; -- z; in - a: fdesc; out - a: error code
+moonfs_update_curr_sector_id:
+	set push, c
+	set push, b
+	set push, a
+	set a, [a+moonfs_fdesc_inode]
+	set b, 0	
+	jsr moonfs_fetch_sector			; cache ptr in b
+	ifn a, 0
+		b 1f
+	set a, [sp]
+	set c, [a+moonfs_fdesc_pos_sector]
+	add c, b
+	set [a+moonfs_fdesc_curr_sector_id], [c+inode_header_size]
+	jsr moonfs_discard_sector	
+	set a, 0
+1:
+	set b, pop	; don't restore a
+	set b, pop
+	set c, pop
+	set pc, pop
+
 ; -- z; a: filepath (null-terminated, unpacked, absolute path, / as dir separator, leading / stripped).  
 ; --    b: fs_open_mode  
 ; --    on success, returns handle in b. Other registers may be trashed.
@@ -519,9 +542,13 @@ moonfs_fread_impl:
 		
 1:
 	set a, [sp+moonfs_fread_handle]			; file descriptor
-	set a, [a+moonfs_fdesc_pos_sector]		; source sector
+	jsr moonfs_update_curr_sector_id		; update curr sector
+	ifn a, 0								; error?
+		set pc, moonfs_fread_impl_exit		; bail
+	
+	set a, [sp+moonfs_fread_handle]			; file descriptor
+	set a, [a+moonfs_fdesc_curr_sector_id]	; source sector
 	set b, 0								; don't lock it
-	sub pc, 1	; todo: look up in inode
 	jsr moonfs_fetch_sector					; fetch it
 	ifn a, 0								; error?
 		set pc, moonfs_fread_impl_exit		; bail	
