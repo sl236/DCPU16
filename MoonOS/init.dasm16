@@ -161,9 +161,18 @@ init_hw_hmd2043:
 	set a, 3							; UPDATE_DEVICE_FLAGS
 	set b, 3							; nonblocking, receive status interrupts
 	hwi i								; send that
+	
 	set a, 0							; QUERY_MEDIA_PRESENT
 	hwi i								; send that	
 	set [fdd_media_present+x], b		; store result	
+	
+	ife b, 0								; no media?
+		set pc, init_hw_next				; don't need any more info
+	set a, 1								; QUERY_MEDIA_PARAMETERS
+	hwi i									; send that	
+	set [fdd_sector_size+x], b				; store results
+	set [fdd_sector_count+x], c
+	set [fdd_readonly_media+x], x	
 	set pc, init_hw_next				; done
 
 

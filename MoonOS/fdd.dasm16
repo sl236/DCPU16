@@ -27,7 +27,7 @@ fdd_access:
 	set i, [fdd_op_freelist]			; free operation
 	ifn i, 0							; got any?
 		b 1f							; go ahead
-		
+	
 	set push, a
 	set push, b
 	set push, c

@@ -218,6 +218,60 @@ shellproc_verb_list:
 2:	dat ~"Error: %x\n", 0
 3:	dat ~"Mounted (%x)\n", 0
 
+; -- test
+1:  dat 1f, 2f, ~"test", 0
+2: 
+	dat 0 
+	
+	set z, 0
+	
+	set a, 3f
+	set b, fs_open_mode_r
+	jsr fs_fopen
+	ife a, 0
+		b 2f
+	set x, 3f
+	set push, a
+	jsr term_printf	
+	set a, pop
+	set pc, pop	
+
+2:
+	set push, x
+	set a, x
+	set b, 5f
+	set c, 7
+	jsr fs_fread
+	ife a, 0
+		b 2f
+	set push, a
+	set a, [sp+1]
+	jsr fs_fclose
+	set x, 5f
+	jsr term_printf
+	add sp, 2
+	set pc, pop	
+
+2:	
+	set [x+5f], 0x0A00
+	set x, 5f
+	jsr term_printf
+	set a, pop
+	jsr fs_fclose
+	ife a, 0
+		set pc, pop
+	set push, a
+	set x, 6f
+	jsr term_printf
+	set a, pop
+	set pc, pop
+	
+	
+3:	dat "test.dat", 0
+4:  dat ~"fopen: %x\n", 0
+5:  dat ~"fread: %x\n", 0, 0, 0, 0, 0, 0, 0, 0
+6:  dat ~"close: %x\n"
+		
 ; -- clear screen
 1:  dat 1f, 2f, ~"clear", 0
 2:  jsr term_clear

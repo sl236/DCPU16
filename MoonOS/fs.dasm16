@@ -1,24 +1,65 @@
 ; ----- Filesystem API table
-; ----- for all functions, z points to FS API instance on entry
+; ----- for all functions, z points to device ID on entry.
 ; ----- all functions may trash any registers; they return 0 in A on success, a nonzero error code on failure.
 ; ----- all functions block and do not return until the operation completes
 ; ----- all counts/sizes/offsets are in words (not bytes or sectors)
 
-def fs_fopen 		0x0	; z; a..b: filepath  c: fs_open_mode  on success, returns handle in x
-def fs_fread 		0x1	; z; a: handle  b: dest address  c: word count    reads to EOF or C, returns actual word count read in x
-def fs_fwrite		0x2	; z; a: handle  b: source address  c: word count  returns word count written in X
-def fs_fseek		0x3	; z; a: handle  b: position (low)  c: position(high)  returns actual new position in X. Position is absolute offset from start of file. If greater than EOF, EOF will result.
-def fs_ftell		0x4	; z; a: handle  returns current position in b(low), file size in X (low), Y (high)
-def fs_fclose		0x5	; z; a: handle
-def fs_fflush		0x6	; z; a: handle
-def fs_dopendir		0x7	; z; a..b: filename	on success, returns handle in x
-def fs_dreaddir		0x8	; z; a: handle			returns next directory entry name in b..c, type in x
-def fs_dclosedir	0x9 ; z; a: handle
-def fs_stat			0xA	; z; a..b: filepath		on success and if entry exists, returns filesize in X(low), Y(high), file type in B
-def fs_unlink		0xB	; z; a..b: filepath
-def fs_errstr		0xC	; z; a: error code. Returns pointer to compressed human-readable message for error code.
-def fs_umount		0xD	; z
-def fs_api_size		0xE
+def fs_fopen_api		0x0	; z; a..b: filepath  c: fs_open_mode  on success, returns handle in x
+def fs_fread_api		0x1	; z; a: handle  b: dest address  c: word count    reads to EOF or C, returns actual word count read in x
+def fs_fwrite_api		0x2	; z; a: handle  b: source address  c: word count  returns word count written in X
+def fs_fseek_api		0x3	; z; a: handle  b: position (low)  c: position(high)  returns actual new position in X. Position is absolute offset from start of file. If greater than EOF, EOF will result.
+def fs_ftell_api		0x4	; z; a: handle  returns current position in b(low), file size in X (low), Y (high)
+def fs_fclose_api		0x5	; z; a: handle
+def fs_fflush_api		0x6	; z; a: handle
+def fs_dopendir_api		0x7	; z; a..b: filename	on success, returns handle in x
+def fs_dreaddir_api		0x8	; z; a: handle			returns next directory entry name in b..c, type in x
+def fs_dclosedir_api	0x9 ; z; a: handle
+def fs_stat_api			0xA	; z; a..b: filepath		on success and if entry exists, returns filesize in b(low), c(high), file type in x
+def fs_unlink_api		0xB	; z; a..b: filepath
+def fs_errstr_api		0xC	; z; a: error code. Returns pointer to compressed human-readable message for error code.
+def fs_umount_api		0xD	; z
+def fs_api_size			0xE
+
+def fs_success				0
+def fs_err_not_implemented	1
+def fs_err_read				2
+def fs_err_write			3
+def fs_err_bad_magic		4
+def fs_err_fs_unmounted		5
+def fs_err_not_found		6
+def fs_err_invalid_handle	7
+
+fs_api_start:
+fs_fopen:		jsr fs_api_call
+fs_fread:		jsr fs_api_call
+fs_fwrite:		jsr fs_api_call
+fs_fseek:		jsr fs_api_call
+fs_ftell:		jsr fs_api_call
+fs_fclose:		jsr fs_api_call
+fs_fflush:		jsr fs_api_call
+fs_dopendir:	jsr fs_api_call
+fs_dreaddir:	jsr fs_api_call
+fs_dclosedir:	jsr fs_api_call
+fs_stat:		jsr fs_api_call
+fs_unlink:		jsr fs_api_call
+fs_errstr:		jsr fs_api_call
+fs_umount:		jsr fs_api_call
+
+fs_api_call:
+	xor y, [sp]
+	xor [sp], y
+	xor y, [sp]
+	set push, z
+	set z, [fdd_mounted_fs+z]
+	set a, fs_err_fs_unmounted
+	sub y, fs_api_start
+	shr y, 1
+	add y, [z]
+	ifn z, 0
+		jsr [y]
+	set z, pop
+	set y, pop
+	set pc, pop
 
 def fs_impl_next	0
 def fs_impl_mount	1	; mount takes device id (0..3) in a, returns FS API instance pointer in B and 0 in A on success, or a nonzero error code in A on failure.
@@ -57,15 +98,6 @@ def moonfs_fs_cache2_lock		0x14
 def moonfs_fs_cache3_lock		0x15
 def moonfs_fs_cache_waiting		0x16
 def moonfs_fs_instance_size		0x17
-
-def moonfs_success				0
-def moonfs_err_not_implemented	1
-def moonfs_err_read				2
-def moonfs_err_write			3
-def moonfs_err_bad_magic		4
-def moonfs_err_fs_unmounted		5
-def moonfs_err_not_found		6
-def moonfs_err_invalid_handle	7
 
 def moonfs_handle_inode			0
 def moonfs_handle_pos			1
@@ -155,15 +187,15 @@ moonfs_mount_impl:
 	sub [z+moonfs_fs_cache3_lock], 1
 	ife a, 0					; success?
 		b 1f
-	set a, moonfs_err_read
+	set a, fs_err_read
 	set pc, moonfs_umount_internal
 1:
-	set x, [b+moonfs_fs_superblock]	; superblock ptr
+	set x, [z+moonfs_fs_superblock]	; superblock ptr
 	ife [x-3], 0x6D6F	; check bootsector magic
 	ife [x-2], 0x6F6E
 	ife [x-1], 0x6673
 		b 1f
-	set a, moonfs_err_bad_magic
+	set a, fs_err_bad_magic
 	set pc, moonfs_umount_internal
 1:
 	set a, 0	; it's a moonfs, and z is a valid API instance	
@@ -359,7 +391,7 @@ moonfs_inode_getid_impl:
 		b 1b							; nope. go around.
 2:
 	jsr moonfs_discard_sector			; done with inode
-	set a, moonfs_err_not_found
+	set a, fs_err_not_found
 	set pc, pop	
 1:
 	jsr moonfs_discard_sector			; done with inode
@@ -410,7 +442,7 @@ moonfs_update_curr_sector_id:
 	set c, pop
 	set pc, pop
 
-; -- z; a: filepath (null-terminated, unpacked, absolute path, / as dir separator, leading / stripped).  
+; -- z; a: filepath (null-terminated, unpacked, absolute path, / as dir separator, leading / stripped).
 ; --    b: fs_open_mode  
 ; --    on success, returns handle in b. Other registers may be trashed.
 moonfs_fopen_impl:
@@ -454,14 +486,14 @@ moonfs_fopen_impl:
 	ife [a+inode_entity_size_high], 0	; todo: files > 64kb
 		b 1f
 	jsr moonfs_discard_sector
-	set a, moonfs_err_not_implemented	
+	set a, fs_err_not_implemented	
 	set pc, moonfs_fopen_impl_exit
 1:
 
 	ifn [a+inode_entity_size_low], 0	; todo: opening an empty file
 		b 1f
 	jsr moonfs_discard_sector
-	set a, moonfs_err_not_implemented	
+	set a, fs_err_not_implemented	
 	set pc, moonfs_fopen_impl_exit
 1:
 
@@ -616,7 +648,7 @@ moonfs_fclose_impl:
 	set push, 2f
 	set pc, kfree
 1:
-	set a, moonfs_err_invalid_handle	
+	set a, fs_err_invalid_handle	
 2:
 	set x, pop
 	set pc, pop
@@ -684,7 +716,7 @@ moonfs_check_mounted:
 	set a, 0
 	set pc, pop
 1:
-	set a, moonfs_err_fs_unmounted
+	set a, fs_err_fs_unmounted
 	set pc, pop
 	
 ; --
@@ -693,6 +725,6 @@ moonfs_errstr:
 
 ; --
 moonfs_not_implemented:
-	set a, moonfs_err_not_implemented
+	set a, fs_err_not_implemented
 	set pc, pop
 	
