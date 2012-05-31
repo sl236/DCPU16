@@ -1,0 +1,20 @@
+Name: In-Circuit Debugger
+ID: 0x4d6f6f6e
+Version: 1
+
+Interrupts do different things depending on contents of the A register:
+
+ A | BEHAVIOR
+---+----------------------------------------------------------------------------
+ 0 | The B register is read, and the corresponding memory address is protected.
+ 1 | The B register is read, and the corresponding memory address is unprotected.
+ 2 | The B register is copied to the hardware breakpoint register
+ 3 | The hardware breakpoint register is copied to the B register
+---+----------------------------------------------------------------------------
+
+Whenever PC is equal to the hardware breakpoint register, 
+or an attempt is made by the DCPU or any peripheral 
+to write to a protected memory address, DCPU execution 
+is immediately halted. DCPU state may then be examined and execution
+resumed by external mechanisms not covered by this spec.
+
