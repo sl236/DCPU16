@@ -16,7 +16,7 @@ def fs_dreaddir_api		0x8	; z; a: handle			returns next directory entry name in b
 def fs_dclosedir_api	0x9 ; z; a: handle
 def fs_stat_api			0xA	; z; a..b: filepath		on success and if entry exists, returns filesize in b(low), c(high), file type in x
 def fs_unlink_api		0xB	; z; a..b: filepath
-def fs_errstr_api		0xC	; z; a: error code. Returns pointer to compressed human-readable message for error code.
+def fs_errstr_api		0xC	; z; a: error code. Returns pointer to compressed human-readable message for error code in a.
 def fs_umount_api		0xD	; z
 def fs_api_size			0xE
 
@@ -51,10 +51,11 @@ fs_api_call:
 	xor y, [sp]
 	set push, z
 	set z, [fdd_mounted_fs+z]
-	set a, fs_err_fs_unmounted
-	sub y, fs_api_start
+	sub y, fs_api_start+2
 	shr y, 1
 	add y, [z]
+	ife z, 0
+		set a, fs_err_fs_unmounted
 	ifn z, 0
 		jsr [y]
 	set z, pop
@@ -72,6 +73,30 @@ def fs_open_mode_w	 	2
 def fs_open_mode_rw 	(fs_open_mode_r|fs_open_mode_w)
 def fs_open_mode_trunc 	4
 def fs_open_mode_create	8
+
+; ----- Common functionality
+fs_errors:
+	dat fs_msg_success
+	dat fs_msg_not_implemented
+	dat fs_msg_read
+	dat fs_msg_write
+	dat fs_msg_bad_magic
+	dat fs_msg_unmounted
+	dat fs_msg_not_found
+	dat fs_msg_invalid_handle
+
+fs_msg_success:				dat ~"OK", 0
+fs_msg_not_implemented:		dat ~"not implemented", 0
+fs_msg_read:				dat ~"read error", 0
+fs_msg_write:				dat ~"write error", 0
+fs_msg_bad_magic:			dat ~"bad magic", 0
+fs_msg_unmounted:			dat ~"not mounted", 0
+fs_msg_not_found:			dat ~"not found", 0
+fs_msg_invalid_handle:		dat ~"bad handle", 0
+
+fs_errstr:
+	set a, [a+fs_errors]
+	set pc, pop
 
 ; ----- Filesystem implementations
 def moonfs_fs_api_ptr			0x00
@@ -118,7 +143,7 @@ moonfs_api:
 	dat moonfs_dclosedir_impl
 	dat moonfs_stat_impl
 	dat moonfs_umount_impl
-	dat moonfs_errstr
+	dat fs_errstr					; use common implementation
 
 moonfs_mount_impl:
 	set push, a						; stash argument
@@ -253,8 +278,8 @@ moonfs_fetch_sector:
 	set x, [z+moonfs_fs_device]			; device ID
 	set b, 1							; one sector
 	jsr fdd_read_impl					; read it
-	set z, pop							; get back api, line index
-	set b, pop
+	set b, pop							; get back api, line index
+	set z, pop
 	sub [b+moonfs_fs_cache0_lock], 1	; unlock line
 	ifn [z+moonfs_fs_cache_waiting], 0	; if processes are waiting on the cache
 		jsr moonfs_cache_notify			; let them know
@@ -373,6 +398,7 @@ moonfs_inode_getid_impl:
 	ifn a, 0						; check for error
 		set pc, pop					; bail if we got an error
 	jsr moonfs_namehash_impl		; hash the name
+	add a, x
 	set y, a						; store initial ptr
 1:
 	ife [a+inode_header_size+direntry_inode], 0	; empty record?
@@ -390,10 +416,12 @@ moonfs_inode_getid_impl:
 	ifn a, y							; tried everywhere?
 		b 1b							; nope. go around.
 2:
+	set b, x
 	jsr moonfs_discard_sector			; done with inode
 	set a, fs_err_not_found
 	set pc, pop	
 1:
+	set b, x
 	jsr moonfs_discard_sector			; done with inode
 	set a, 0
 	set b, [a+inode_header_size+direntry_inode]
@@ -473,8 +501,9 @@ moonfs_fopen_impl:
 	set pc, moonfs_fopen_impl_pack_and_lookup
 	
 1:	; got a filename
-	jsr moonfs_fopen_impl_pack_and_lookup					; get its inode	
-	set [sp+moonfs_fopen_curr_inode], b							; stash that
+	set j, [sp+moonfs_fopen_curr_path]		; start of filename in j
+	jsr moonfs_fopen_impl_pack_and_lookup	; get its inode	
+	set [sp+moonfs_fopen_curr_inode], b		; stash that
 		
 	set a, b				; fetch it
 	set b, 0				; don't lock
@@ -719,10 +748,6 @@ moonfs_check_mounted:
 	set a, fs_err_fs_unmounted
 	set pc, pop
 	
-; --
-moonfs_errstr:
-	set pc, moonfs_not_implemented ; todo
-
 ; --
 moonfs_not_implemented:
 	set a, fs_err_not_implemented

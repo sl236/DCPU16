@@ -220,18 +220,38 @@ shellproc_verb_list:
 
 ; -- test
 1:  dat 1f, 2f, ~"test", 0
-2: 
-	dat 0 
+2:
+	;set a, 2
+	;set b, 0
+	;hwi [clock_device_id]
 	
-	set z, 0
+	;set a, 0
+	;set b, (0xefbe + 0x16)
+	;hwi [debug_device_id]	
 	
+	;set a, 0xffff
+	;hwi [debug_device_id]
+	
+	jsr 2f
+	jsr 2f
+	jsr 2f
+	jsr 2f
+	jsr 2f
+	
+	;set a, 2
+	;set b, isr_handle_clock
+	;hwi [clock_device_id]	
+	;set pc, pop 
+2:
+	set z, 0	
 	set a, 3f
 	set b, fs_open_mode_r
 	jsr fs_fopen
 	ife a, 0
 		b 2f
-	set x, 3f
+	set x, 4f
 	set push, a
+	set c, SHELL_COLOUR
 	jsr term_printf	
 	set a, pop
 	set pc, pop	
@@ -239,7 +259,7 @@ shellproc_verb_list:
 2:
 	set push, x
 	set a, x
-	set b, 5f
+	set b, 8f
 	set c, 7
 	jsr fs_fread
 	ife a, 0
@@ -248,20 +268,23 @@ shellproc_verb_list:
 	set a, [sp+1]
 	jsr fs_fclose
 	set x, 5f
+	set c, SHELL_COLOUR
 	jsr term_printf
 	add sp, 2
 	set pc, pop	
 
 2:	
-	set [x+5f], 0x0A00
-	set x, 5f
+	set x, 7f
+	set c, SHELL_COLOUR
 	jsr term_printf
+	jsr term_newline
 	set a, pop
 	jsr fs_fclose
 	ife a, 0
 		set pc, pop
 	set push, a
 	set x, 6f
+	set c, SHELL_COLOUR
 	jsr term_printf
 	set a, pop
 	set pc, pop
@@ -269,8 +292,10 @@ shellproc_verb_list:
 	
 3:	dat "test.dat", 0
 4:  dat ~"fopen: %x\n", 0
-5:  dat ~"fread: %x\n", 0, 0, 0, 0, 0, 0, 0, 0
-6:  dat ~"close: %x\n"
+5:  dat ~"fread: %x\n", 0
+6:  dat ~"close: %x\n", 0
+7:	dat ~"rd: "
+8:	dat 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 		
 ; -- clear screen
 1:  dat 1f, 2f, ~"clear", 0
