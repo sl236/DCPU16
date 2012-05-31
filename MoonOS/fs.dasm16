@@ -251,9 +251,14 @@ moonfs_fetch_sector:
 	; couldn't find a usable sector already in the cache
 	; look for a free line
 1:
+	set push, a
 	jsr moonfs_check_mounted
-	ifn a, 0
-		set pc, pop
+	ife a, 0
+		b 2f
+	add sp, 1
+	set pc, pop
+2:
+	set a, pop
 	set b, z
 	ife [b+moonfs_fs_cache0_refs], 0
 		b 2f
@@ -422,9 +427,10 @@ moonfs_inode_getid_impl:
 	set pc, pop	
 1:
 	set b, x
+	set push, a
 	jsr moonfs_discard_sector			; done with inode
-	set a, 0
-	set b, [a+inode_header_size+direntry_inode]
+	set b, pop
+	set b, [b+inode_header_size+direntry_inode]
 	set pc, pop
 
 ; --
@@ -515,7 +521,7 @@ moonfs_fopen_impl:
 	ife [a+inode_entity_size_high], 0	; todo: files > 64kb
 		b 1f
 	jsr moonfs_discard_sector
-	set a, fs_err_not_implemented	
+	set a, fs_err_not_implemented
 	set pc, moonfs_fopen_impl_exit
 1:
 
@@ -536,11 +542,12 @@ moonfs_fopen_impl:
 	set [a+moonfs_fdesc_pos_sector], 0						; initial position
 	set [a+moonfs_fdesc_pos_offset], 0
 	set [a+moonfs_fdesc_curr_sector_id], pop				; initial sector
-	set [a+moonfs_fdesc_inode], b							; inode
+	set [a+moonfs_fdesc_inode], [sp+moonfs_fopen_curr_inode]; inode
 	set [a+moonfs_fdesc_mode], [sp+moonfs_fopen_stored_b]	; mode
 	set [a+moonfs_fdesc_errcode], 0							; initial error state
 	set [a+moonfs_fdesc_memhandle], x						; memory handle
-	set [sp+moonfs_fopen_stored_x], a						; return file descriptor in X
+	set [sp+moonfs_fopen_stored_b], a						; return file descriptor in B
+	set a, 0												; no error
 	
 	; drop through to moonfs_fopen_impl_exit
 

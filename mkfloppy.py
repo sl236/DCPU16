@@ -54,7 +54,7 @@ def adddirentry(fs, parent, child, name):
 	tgt = maxentries
 	
 	for entry in range(0, maxentries ):
-		offset = parent*SECTOR_SIZE + (inode_header_size + ((entry + hash) % maxentries)) * 2
+		offset = parent*SECTOR_SIZE + (inode_header_size + ((entry + hash) % maxentries)*direntry_size) * 2
 		if( fs[offset] == 0 ):
 			tgt = ((entry + hash) % maxentries)
 			break
@@ -62,8 +62,8 @@ def adddirentry(fs, parent, child, name):
 		print >> sys.stderr, 'could not insert '+file+' at '+path+': directory full!'
 		sys.exit(-1)
 	
-	print >> sys.stderr, ('{0:04x}'.format(child)) + ': ' + name + ' -> ' + '{0:04x}'.format(tgt+inode_header_size) + '/' + ('{0:04x}'.format(parent))
-	tgt = parent*(SECTOR_SIZE/2) + inode_header_size + tgt
+	print >> sys.stderr, ('{0:04x}'.format(child)) + ': ' + name + ' -> (' + '{0:04x}'.format(tgt*direntry_size) + '+' + '{0:04x}'.format(inode_header_size) + ') -> ' + '{0:04x}'.format((tgt*direntry_size)+inode_header_size) + '/' + ('{0:04x}'.format(parent))
+	tgt = parent*(SECTOR_SIZE/2) + inode_header_size + (tgt * direntry_size)
 		
 	writestring(fs, tgt, name)
 	writeshort(fs, tgt + direntry_inode, child )
@@ -157,6 +157,7 @@ def gethash( data ):
 	sum = 0
 	for i in range(0, len(chars), 2):
 		sum ^= ((chars[i]&0x7f)<<8)|(chars[i+1]&0x7f)
+		print >> sys.stderr, data + '/ {0:02x}: {1:04x}'.format(i, sum)
 	return sum
 
 def writestring( dest, word_offset, data ):
