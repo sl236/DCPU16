@@ -1,0 +1,239 @@
+def lexer_getpw_cb			0	; callback function, when passed lexer_getpw_param in A, returns error code in A and next packed word in B if error code is 0. 
+def lexer_getpw_param		1
+def lexer_cachedbyte0		2
+def lexer_cachedbyte1		3
+def lexer_currtoken_id		4
+def lexer_currtoken_data	5
+def lexer_max_buffer_size	64
+def lexer_struct_size		(lexer_currtoken_data + lexer_max_buffer_size)
+
+def lexer_token_char			0
+def lexer_token_integer			1
+def lexer_token_identifier		2
+def lexer_token_string			3
+def lexer_token_stream_error	4
+def lexer_token_lex_error		5
+
+def lexer_error_none			0
+def lexer_error_buffer_space	1
+def lexer_error_overflow		2
+def lexer_error_eof_met			3
+
+def char_sense_eof				(1<<0)	; 0x0001
+def char_sense_eol				(1<<1)	; 0x0002
+def char_sense_whitespace		(1<<2)	; 0x0004
+def char_sense_quote			(1<<3)	; 0x0008
+def char_sense_digit			(1<<4)	; 0x0010
+def char_sense_hexdigit			(1<<5)	; 0x0020
+def char_sense_id_start			(1<<6)	; 0x0040
+def char_sense_id_body			(1<<7)	; 0x0080
+def char_sense_control			(1<<8)	; 0x0100
+def char_sense_escape			(1<<9)	; 0x0200
+
+char_sense_table:
+;			0		1		2		3		4		5		6		7		8		9		A		B		C		D		E		F
+	dat 0x0101, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0104, 0x0106, 0x0100, 0x0100, 0x0106, 0x0100, 0x0100	; 0
+	dat 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100	; 1
+	
+	dat 0x0002, 0x0000, 0x0008, 0x0000, 0x0000, 0x0000, 0x0000, 0x0008, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000	; 2
+	dat 0x00B0, 0x00B0, 0x00B0, 0x00B0, 0x00B0, 0x00B0, 0x00B0, 0x00B0, 0x00B0, 0x00B0, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000	; 3
+	
+	dat 0x0000, 0x00E0, 0x00E0, 0x00E0, 0x00E0, 0x00E0, 0x00E0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0  ; 4
+	dat 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000	; 5
+	
+	dat 0x0000, 0x00E0, 0x00E0, 0x00E0, 0x00E0, 0x00E0, 0x00E0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0  ; 6
+	dat 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x00C0, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000	; 7
+
+; ----- lexer_init
+; in - a: getc callback fn; b: getc callback param
+; out - a: lexer_struct
+lexer_init:
+	set push, x
+	set push, a
+	set x, lexer_struct_size
+	jsr malloc	; assumed to take size in x, return pointer to start of allocated memory in x, preserve other registers
+	set a, x
+	set [a+lexer_getpw_cb], pop
+	set [a+lexer_getpw_param], b
+	set [a+lexer_cachedbyte0], 0
+	set [a+lexer_cachedbyte1], 0
+	jsr lexer_next_token
+	set x, pop
+	set pc, pop
+	
+; ----- lexer_destroy
+; a: lexer_struct
+lexer_destroy:
+	set push, x
+	set x, a
+	jsr free	; assumed to take pointer to start of allocated memory in x, preserve other registers
+	set x, pop
+	set pc, pop	
+	
+; ----- lexer_next_token
+; a: lexer_struct
+lexer_next_token:
+	set push, c
+	set push, b
+	set push, a
+	
+	set c, a
+	jsr lexer_next_byte_impl
+	ife a, 0
+		b 1f
+	set [c+lexer_currtoken_id], lexer_token_stream_error
+	set [c+lexer_currtoken_data], a
+	set pc, lexer_next_token_exit
+	
+; -------
+1:
+	ifn b, '0'
+		b 1f		
+	; -- literal 0, start of hexadecimal integer, start of octal integer
+	set [c+lexer_currtoken_id], lexer_token_integer
+	set [c+lexer_currtoken_data], 0
+	jsr lexer_next_byte_impl
+	ifn a, 0
+		set pc, lexer_next_token_exit
+	
+	set push, x
+	set x, char_sense_digit
+	set push, 8
+	ifb [b+char_sense_table], char_sense_digit
+		b 2f
+	ifn b, 'x'
+		b 4f	
+	bor x, char_sense_hexdigit
+	set [sp], 16
+	jsr lexer_next_byte_impl
+2:
+	ifn a, 0
+		b 3f
+	ifc [b+char_sense_table], x
+		b 3f
+	sub b, '0'
+	ifg b, 9
+		sub b, (('A' - '0') - 16)
+	ifg b, 0x10
+		sub b, 0x20
+	mul [c+lexer_currtoken_data], [sp]
+	add [c+lexer_currtoken_data], b
+	jsr lexer_next_byte_impl
+	b 2b
+3:
+	set x, pop
+	set x, pop
+4:
+	ifn a, 0
+		set pc, lexer_next_token_exit
+	set [c+lexer_cachedbyte1], [c+lexer_cachedbyte0]	
+	set [c+lexer_cachedbyte0], b
+	bor [c+lexer_cachedbyte0], 0xff00
+	set pc, lexer_next_token_exit
+
+; -------	
+1:
+	ifc [b+char_sense_table], char_sense_digit
+		b 1f
+	; -- decimal integer
+	sub b, '0'
+	set [c+lexer_currtoken_id], lexer_token_integer
+	set [c+lexer_currtoken_data], b
+	set push, x
+	set push, 10
+	jsr lexer_next_byte_impl
+	set pc, 2b
+
+; -------
+1:
+	ifc [b+char_sense_table], char_sense_quote
+		b 1f
+	; -- quoted string
+	set [c+lexer_currtoken_id], lexer_token_string
+	set [c+lexer_currtoken_data], b
+	set push, x
+	set x, 1
+2:
+	jsr lexer_next_byte_impl
+	ifn a, 0
+		b lexer_pop_x_and_error
+	ifc [b+char_sense_table], char_sense_escape
+		b 3f
+	sub pc, 1 ; todo: escape
+3:	
+	set [x+lexer_currtoken_data], b	
+	ife b, [c+lexer_currtoken_data]
+		b 4f
+	add x, 1
+	ifn x, lexer_max_buffer_size
+		b 2b
+	set [c+lexer_currtoken_id], lexer_token_lex_error
+	set [c+lexer_currtoken_data], lexer_error_buffer_space		
+4:
+	set x, pop
+	set pc, lexer_next_token_exit
+
+1:
+	ifc [b+char_sense_table], char_sense_id_start
+		b 1f
+	; -- identifier
+	set [c+lexer_currtoken_id], lexer_token_identifier
+	set [c+lexer_currtoken_data], b
+	set push, x
+	set x, 1
+2:
+	jsr lexer_next_byte_impl
+	ife a, 0
+		b 3f
+	set x, pop
+	set pc, lexer_next_token_exit
+3:
+	ifb [b+char_sense_table], (char_sense_id_start|char_sense_id_body)
+		b 3f
+3:
+	set [c+lexer_currtoken_data], b
+	add x, 1
+	
+	b 2b
+				
+; -------	
+1:	; -- single character
+	set [c+lexer_currtoken_id], lexer_token_char
+	set [c+lexer_currtoken_data], b
+	
+	; drop through
+lexer_next_token_exit:
+	set a, pop
+	set b, pop
+	set c, pop
+	set pc, pop
+
+lexer_pop_x_and_error:
+	set x, pop
+	set [c+lexer_currtoken_id], lexer_token_lex_error
+	set [c+lexer_currtoken_data], lexer_error_eof_met
+	b lexer_next_token_exit
+
+; ----- lexer_next_byte_impl
+; in: c - lexer_struct
+; out: a - error code; b - next byte
+lexer_next_byte_impl:
+	ife [c+lexer_cachedbyte0], 0
+		b 1f
+	set b, [c+lexer_cachedbyte0]
+	and b, 0xff
+	set [c+lexer_cachedbyte0], [c+lexer_cachedbyte1]
+	set [c+lexer_cachedbyte1], 0
+	set a, 0
+	set pc, pop
+1:
+
+	set a, [c+lexer_getpw_param]
+	jsr [c+lexer_getpw_cb]
+	ifn a, 0
+		set pc, pop
+	set [c+lexer_cachedbyte0], b
+	bor [c+lexer_cachedbyte0], 0xff00
+	shr b, 8
+	set a, 0
+	set pc, pop
