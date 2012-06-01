@@ -28,6 +28,7 @@ def fs_err_bad_magic		4
 def fs_err_fs_unmounted		5
 def fs_err_not_found		6
 def fs_err_invalid_handle	7
+def fs_err_not_file			8
 
 fs_api_start:
 fs_fopen:		jsr fs_api_call
@@ -84,6 +85,7 @@ fs_errors:
 	dat fs_msg_unmounted
 	dat fs_msg_not_found
 	dat fs_msg_invalid_handle
+	dat fs_msg_not_file
 
 fs_msg_success:				dat ~"OK", 0
 fs_msg_not_implemented:		dat ~"not implemented", 0
@@ -93,6 +95,7 @@ fs_msg_bad_magic:			dat ~"bad magic", 0
 fs_msg_unmounted:			dat ~"not mounted", 0
 fs_msg_not_found:			dat ~"not found", 0
 fs_msg_invalid_handle:		dat ~"bad handle", 0
+fs_msg_not_file:			dat ~"not a file", 0
 
 fs_errstr:
 	set a, [a+fs_errors]
@@ -123,12 +126,6 @@ def moonfs_fs_cache2_lock		0x14
 def moonfs_fs_cache3_lock		0x15
 def moonfs_fs_cache_waiting		0x16
 def moonfs_fs_instance_size		0x17
-
-def moonfs_handle_inode			0
-def moonfs_handle_pos			1
-def moonfs_handle_access		2
-def moonfs_handle_memblock		3
-def moonfs_handle_size			(moonfs_handle_memblock+1)
 
 moonfs_api:
 	dat moonfs_fopen_impl
@@ -299,6 +296,7 @@ moonfs_cache_wait_for_lock:
 moonfs_cache_wait:
 	set push, z
 	set push, a
+	set push, b
 	set push, 3f
 	
 	iaq 1
@@ -317,6 +315,7 @@ moonfs_cache_wait:
 	set pc, pop
 
 3:
+	set b, pop
 	set a, pop
 	set z, pop
 	set pc, pop	
@@ -440,7 +439,8 @@ def moonfs_fdesc_pos_sector		2
 def moonfs_fdesc_pos_offset		3
 def moonfs_fdesc_errcode		4
 def moonfs_fdesc_curr_sector_id	5
-def moonfs_fdesc_memhandle		6
+def moonfs_fdesc_flags			6
+def moonfs_fdesc_memhandle		7
 def moonfs_fdesc_struct_size	(moonfs_fdesc_memhandle+1)
 
 def moonfs_fopen_locals_size	9
@@ -456,6 +456,11 @@ def moonfs_fopen_stored_x		moonfs_fopen_locals_size+0
 
 ; -- z; in - a: fdesc; out - a: error code
 moonfs_update_curr_sector_id:
+	ifc [a+moonfs_fdesc_flags], inode_flag_simple
+		b 1f
+	set a, 0
+	set pc, pop
+1:		
 	set push, c
 	set push, b
 	set push, a
@@ -527,12 +532,32 @@ moonfs_fopen_impl:
 
 	ifn [a+inode_entity_size_low], 0	; todo: opening an empty file
 		b 1f
+	set a, fs_err_not_implemented
+2:
 	jsr moonfs_discard_sector
-	set a, fs_err_not_implemented	
 	set pc, moonfs_fopen_impl_exit
+	
 1:
-
+	set x, [a+inode_entity_flags]		; flags
+	and x, inode_type_mask				; entity type
+	ife x, inode_type_file				; is it a file?
+		b 1f							; yup, skip
+	set a, fs_err_not_file				; nope, report error and bail
+	b 2b
+	
+1:
+	set push, [a+inode_entity_flags]
+	ifc [sp], (inode_flag_simple)		; simple?
+		b 1f							; nope
+	; simple file. payload is data
+	set push, inode_header_size
+	set push, [sp+moonfs_fopen_curr_inode+2]
+	b 2f	
+1:
+	; indirect file. payload is sector list
+	set push, 0
 	set push, [a+inode_header_size]							; store first sector location
+2:
 	jsr moonfs_discard_sector								; release cacheline
 	
 	set x, moonfs_fdesc_struct_size							; memory for descriptor
@@ -540,8 +565,9 @@ moonfs_fopen_impl:
 	
 	set a, [x+kerntable_block_start]						; block start
 	set [a+moonfs_fdesc_pos_sector], 0						; initial position
-	set [a+moonfs_fdesc_pos_offset], 0
 	set [a+moonfs_fdesc_curr_sector_id], pop				; initial sector
+	set [a+moonfs_fdesc_pos_offset], pop					; initial offset
+	set [a+moonfs_fdesc_flags], pop							; flags
 	set [a+moonfs_fdesc_inode], [sp+moonfs_fopen_curr_inode]; inode
 	set [a+moonfs_fdesc_mode], [sp+moonfs_fopen_stored_b]	; mode
 	set [a+moonfs_fdesc_errcode], 0							; initial error state
