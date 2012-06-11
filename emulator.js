@@ -289,8 +289,12 @@
                         SetVal(b, aval ? Math.floor(bval / aval) : 0, apc, asp);
                         break;
                     case 0x7: // DVI
-                        Emulator.regs[10] = aval ? ((Math.floor((AsSigned(bval) << 16) / AsSigned(aval)) >>> 0) & 0xFFFF) : 0;
-                        SetVal(b, bval ? (Math.floor(AsSigned(bval) / AsSigned(aval)) >>> 0) & 0xFFFF : 0, apc, asp);
+                        tmp = aval ? (AsSigned(bval) << 16) / AsSigned(aval) : 0;
+                        tmp = (((tmp<0) ? Math.ceil(tmp) : Math.floor(tmp))>>>0)&0xFFFF;
+                        Emulator.regs[10] = tmp;
+                        tmp = aval ? (AsSigned(bval)) / AsSigned(aval) : 0;
+                        tmp = (((tmp<0) ? Math.ceil(tmp) : Math.floor(tmp))>>>0)&0xFFFF;
+                        SetVal(b, tmp, apc, asp);
                         break;
                     case 0x8: // MOD
                         SetVal(b, aval ? (bval % aval) : 0, apc, asp);
