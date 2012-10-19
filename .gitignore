@@ -1,0 +1,4 @@
+floppy*
+tmp*
+*.tmp
+*.preprocessed
