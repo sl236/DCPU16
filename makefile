@@ -8,7 +8,13 @@ floppy.img: mkfloppy.py bootsector.dasm16 $(FLOPPY_CONTENT)
 
 $(FLOPPY_DIR)/%.image : %.dasm16 assemble *.js
 	./assemble -Oxxd -q $< | xxd -r > $@
-	
+
+%.dasm16.preprocessed : %.dasm16
+	cpp $< > $@
+
+%.xxd : %.dasm16.preprocessed 
+	./assemble -Oxxd $< > $@
+
 all: floppy.img.b64
      
 $(FLOPPY_CONTENT): | $(FLOPPY_DIR)

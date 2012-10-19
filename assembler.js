@@ -16,7 +16,7 @@
         Assembler.CurrFile.push([_name + ' line ', Assembler.CurrLineNumber]);
     }
     
-    function EndInclude(_name)
+    function EndInclude()
     {        
         var f = Assembler.CurrFile.pop();
         Assembler.CurrFile[Assembler.CurrFile.length - 1][1] += (Assembler.CurrLineNumber - f[1]);
@@ -134,8 +134,19 @@
 
     Assembler.Grammar =
     {
-        START: ["labelledline | justlabels | line | begininclude | endinclude | emptyline"],
+        START: ["labelledline | justlabels | line | begininclude | endinclude | cppmagic | emptyline"],
         emptyline: ["/\\s*/ $"],
+        cppmagic: ['/\\#\\s*/ number /\\s*"/ quotedstringdata /"\\s*/ /.*/ $', function(_m)
+        {
+			var name = '';
+			for( var i = 0; i < _m[3].length; ++i )
+			{
+				name += String.fromCharCode(_m[3][i]);
+			}
+			Assembler.CurrFile[Assembler.CurrFile.length - 1][0] = name + ' line ';
+			Assembler.CurrFile[Assembler.CurrFile.length - 1][1] = Assembler.CurrLineNumber - eval(_m[1][0]) + 1;
+			return 0;
+        }],
         labelledline: ["justlabels line", function(_m) { return _m[1]; } ],
         justlabels: ["/\\s*/ labels /\\s*/"],
         line: ["/\\s*/ statement /\\s*/ $", function(_m) { return _m[1]; } ],
@@ -588,7 +599,7 @@
     // -----------------------
     Assembler.IncludeRegexp = new RegExp('^\\s*[.]?include\\s*["]([^"]+)["]', 'im');
     Assembler.Assemble = function(_text)
-    {
+    {    
         // process includes
         Assembler.Program = _text;
         var m = Assembler.IncludeRegexp.exec(_text);
@@ -619,6 +630,8 @@
         var lines = _text.split(/\n/);
         Assembler.Lines = _text.split(/\n/);
         Assembler.MemMap = [];
+        
+        BeginInclude( "" );
 
         // so, I decided to use regular expressions to solve the problem of macro parsing...
         var macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?\\s*((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
