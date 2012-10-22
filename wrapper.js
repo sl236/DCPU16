@@ -39,6 +39,11 @@ load('assembler.js');
         Emulator.mem[i] = 0;
     }
 
+    function writeFile(_filename, _data) 
+    {
+    	runCommand('dd', 'status=noxfer', 'of=' + _filename, { 'input': _data, 'err': '' } );
+    }
+
     Console.Log = function(_text)
     {
         if( !Wrapper.options['q'] )
@@ -193,6 +198,51 @@ load('assembler.js');
 
                 Packages.computer.DCPU.testCpu(str.toString().toCharArray());
             }
+            
+            if( Wrapper.options['D'] )
+            {
+				var used_lines = [ ];
+				var used_line_lists = [ ];
+				if( Assembler.Lines && Assembler.MemMap )
+				{
+					var comma = '';
+					for( var i = 0; i < Assembler.MemMap.length; ++i )
+					{
+						if( Assembler.MemMap[i] && Assembler.Lines[Assembler.MemMap[i][0]-1] )
+						{
+							if( !used_line_lists[Assembler.MemMap[i][0]-1] )
+							{
+								used_line_lists[Assembler.MemMap[i][0]-1] = [ ];
+								used_lines.push(Assembler.MemMap[i][0] - 1);
+							}
+							var s = Assembler.MemMap[i][1]();
+							s = "'" + s.replace(/'/g, "\\'").replace(/"/g, '\\"') + "'";
+							used_line_lists[Assembler.MemMap[i][0] - 1].push([i, s]);
+						}
+					}
+				
+					var dsym = "[\n";					
+					var comma = '';
+					for (var i = 0; i < used_lines.length; ++i)
+					{
+						dsym += comma;
+						dsym += " [\n";
+						dsym += "  '" + Assembler.Lines[used_lines[i]].replace(/'/g, "\\'").replace(/"/g, '\\"') + "',\n";
+						dsym += "   [ ";
+						var commaj = '';
+						for( var j = 0; j < used_line_lists[used_lines[i]].length; ++j )
+						{
+							dsym += commaj + used_line_lists[used_lines[i]][j][0];
+							commaj = ", ";
+						}
+						dsym += " ]\n ]";
+						comma = ",\n";
+					}
+					dsym += ((used_lines.length < 1) ? "" : "\n");
+				}
+				dsym += " ]\n";
+				writeFile( Wrapper.options['D'], dsym );
+			}
             
             if(Wrapper.options['v'])
             {
