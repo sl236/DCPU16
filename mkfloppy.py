@@ -182,7 +182,7 @@ if not os.access('bootsector.dasm16', os.F_OK):
 	print >> sys.stderr, 'bootsector.dasm16 not found!'
 	sys.exit(-1)
 
-proc = subprocess.Popen(["./assemble bootsector.dasm16 -q -Oxxd | xxd -r"], stdout=subprocess.PIPE, shell=True)
+proc = subprocess.Popen(["./assemble bootsector.dasm16 -Oxxd | xxd -r"], stdout=subprocess.PIPE, shell=True)
 (out, err) = proc.communicate()
 fs = bytearray( out )
 if( len(fs) == 0 ):

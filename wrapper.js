@@ -207,6 +207,10 @@ load('assembler.js');
                 }
             }
         }
+        else
+        {
+            java.lang.System.exit(1);
+        }
     }
     else
     {

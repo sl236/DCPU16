@@ -631,8 +631,6 @@
         Assembler.Lines = _text.split(/\n/);
         Assembler.MemMap = [];
         
-        BeginInclude( "" );
-
         // so, I decided to use regular expressions to solve the problem of macro parsing...
         var macroregexp = new RegExp('^[^;]*[.]?\\bmacro\\s+([A-Za-z0-9_]+)\\b(?:\\s*[(]?\\s*((?:(?:_[A-Za-z0-9_]+)\\s*,?\\s*)+)[)]?)?', 'i');
         if( window.isRhino )
