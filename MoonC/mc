@@ -1,0 +1,15 @@
+#!/bin/sh
+
+JAVA_CMD="/usr/bin/java"
+JAVA_OPTS=""
+JAVA_CLASSPATH="/usr/share/java/js.jar:/usr/share/java/jline.jar:./dcpu.jar"
+JAVA_MAIN="org.mozilla.javascript.tools.shell.Main"
+
+if ! test -e $JAVA_CMD
+then
+  JAVA_CLASSPATH="c:\\cygwin\\usr\\share\\java\\js.jar;c:\\usr\\share\\java\\jline.jar;.\\dcpu.jar"
+  JAVA_CMD=`which java`
+fi
+
+
+$JAVA_CMD $JAVA_OPTS -classpath $JAVA_CLASSPATH $JAVA_MAIN $0.js $@
