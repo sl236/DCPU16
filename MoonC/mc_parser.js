@@ -73,6 +73,7 @@ Lexer.prototype.SetError = function( _message )
 		this.m_token = "Error: line " + (this.m_row + 1) + " column " + (this.m_col + 1) + ": " + _message;
 		Console.Log( this.m_token );
 	}
+	return 0;
 }
 
 Lexer.prototype.Next = function()
@@ -221,22 +222,17 @@ Context.prototype.TypeDef = function(_name)
 }
 
 // -------------------------------------
-var RT = 
-{	
-	Invalid: 0,
-	StorageClassSpecifier: 1,
-	TypeSpecifier: 2,
-	StructSpecifier: 3,
-	UnionSpecifier: 4,
-	EnumSpecifier: 5,
-	TypeQualifier: 6
-};
-
 var ReservedWords = { };
-[ 'typedef', 'extern', 'static', 'auto', 'register' ].map( function(i){ ReservedWords[i] = RT.StorageClassSpecifier; } );
-[ 'struct' ].map( function(i){ ReservedWords[i] = RT.StructSpecifier; } );
-[ 'union' ].map( function(i){ ReservedWords[i] = RT.UnionSpecifier; } );
-[ 'enum' ].map( function(i){ ReservedWords[i] = RT.EnumSpecifier; } );
+[	"typedef", "extern", "static", "auto", 
+	"register", "void", "char", "short", 
+	"int", "long", "float", "double", 
+	"signed", "unsigned",
+	"struct", "union", "const", "restrict", 
+	"volatile", "sizeof", "enum", "inline", 
+	"case", "default", "if", "else", 
+	"switch", "while", "do", "for", 
+	"goto", "continue", "break", "return" 
+].map( function(i){ ReservedWords[i] = 1; } );
 
 var integralTypeNames = {};
 var baseTypeNames = {};
@@ -248,11 +244,138 @@ var compositeTypes = {};
 ['char', 'int'].map(function(i) { integralTypeNames[i] = i; });
 ['short', 'long'].map(function(i) { typeLengths[i] = i; });
 ['signed', 'unsigned'].map(function(i) { typeSignedness[i] = i; });
-[ 'struct', 'union', 'class' ].map(function(i) { compositeTypes[i] = i; });
+['static', 'const', 'volatile'].map(function(i) { typeQualifiers[i] = i; });
+['struct', 'union', 'class' ].map(function(i) { compositeTypes[i] = i; });
 
-function parseCompositeTypeDef(lex)
+function parseSpecifierQualifier(lex,decl)
 {
-	lex.SetError( "TODO: parseCompositeTypeDef(lex)" );
+	// void, char, int, float, double
+	if (baseTypeNames[lex.m_token])
+	{
+		if (!decl.base || (decl.base == lex.m_token))
+		{
+			decl.base = lex.m_token;
+			if (decl.tlen && !integralTypeNames[decl.base])
+			{
+				return lex.SetError(decl.tlen + " is invalid for " + decl.base);
+			}
+		}
+		else
+		{
+			return lex.SetError("Unexpected " + lex.m_token + ": already seen " + decl.base);
+		}
+	}
+	else if (typeLengths[lex.m_token])
+	{
+		if (!decl.tlen || (decl.tlen == lex.m_token))
+		{
+			decl.tlen = lex.m_token;
+			if (decl.base && !integralTypeNames[decl.base])
+			{
+				return lex.SetError(decl.tlen + " is invalid for " + decl.base);
+			}
+		}
+		else
+		{
+			return lex.SetError("Unexpected " + lex.m_token + ": already seen " + decl.tlen);
+		}
+	}
+	else if (typeSignedness[lex.m_token])
+	{
+		if (!decl.tsign || (decl.tsign == lex.m_token))
+		{
+			decl.tsign = lex.m_token;
+			if (decl.base && !integralTypeNames[decl.base])
+			{
+				return lex.SetError(decl.tsign + " is invalid for " + decl.base);
+			}
+		}
+		else
+		{
+			return lex.SetError("Unexpected " + lex.m_token + ": already seen " + decl.tsign);
+		}
+	}
+	else if (typeQualifiers[lex.m_token])
+	{
+		decl[lex.m_token] = 1;
+	}
+	else
+	{
+		return 0;
+	}
+
+	lex.Next();
+	return 1;
+}
+
+function parseDeclarator(lex)
+{
+	var decl = {};
+
+	if (lex.m_TT == TT.Identifier)
+	{
+		if( ReservedWords[lex.m_token] )
+		{
+			return lex.SetError( lex.m_token + " is a reserved word" );
+		}
+
+		decl.name = lex.m_token;
+		lex.Next();
+	}
+	else
+	{
+		return lex.SetError( "Expected a declarator, got " + lex.m_token );
+	}
+
+	return decl;
+}
+
+function parseCompositeTypeDef(lex, decl)
+{
+	decl.def = [];
+	if( lex.m_token != '{' ) { return lex.SetError( "Expected {" ); }
+
+	lex.m_token = ';';
+	while (lex.IsOK() && ((lex.m_TT == TT.Char) && (lex.m_token == ';')))
+	{
+		lex.Next();
+		var item = {};
+		while( lex.IsOK() && (lex.m_TT == TT.Identifier) )
+		{
+			if (!parseSpecifierQualifier(lex,item))
+			{
+				var td = lex.m_context.TypeDef(lex.m_token);
+				if (td)
+				{
+					item.base = 'typedef';
+					item.tname = lex.m_token;
+					item.def = td;
+					lex.Next();
+				}
+				else
+				{
+					if (ReservedWords[lex.m_token])
+					{
+						return lex.SetError(lex.m_token + " is a reserved word");
+					}
+					item.name = lex.m_token;
+					lex.Next();
+					decl.def.push(item);
+					break;					
+				}
+			}
+		}		
+	}
+
+	if (!(
+			lex.IsOK()
+			&& (lex.m_TT == TT.Char) 
+			&& (lex.m_token == '}')
+	)) 
+	{ 
+		return lex.SetError("Expected }, got " + lex.m_token );
+	}
+	lex.Next();
 }
 
 function parseType(lex)
@@ -268,66 +391,9 @@ function parseType(lex)
 	
 	while( lex.IsOK() && (lex.m_TT == TT.Identifier) )
 	{
-		// void, char, int, float, double
-		if( baseTypeNames[lex.m_token] )
+		if (parseSpecifierQualifier(lex,decl))
 		{
-			if( !decl.base || (decl.base == lex.m_token) )
-			{
-				decl.base = lex.m_token;
-				if( decl.tlen && !integralTypeNames[decl.base] )
-				{
-					return lex.SetError( decl.tlen + " is invalid for " + decl.base );
-				}
-				lex.Next();
-			}
-			else
-			{
-				return lex.SetError( "Unexpected " + lex.m_token + ": already seen " + decl.base );
-			}
-		}
-		else if( typeLengths[lex.m_token] )
-		{
-			if (!decl.tlen || (decl.tlen == lex.m_token))
-			{
-				decl.tlen = lex.m_token;
-				if( decl.base && !integralTypeNames[decl.base] )
-				{
-					return lex.SetError( decl.tlen + " is invalid for " + decl.base );
-				}
-				lex.Next();
-			}
-			else
-			{
-				return lex.SetError("Unexpected " + lex.m_token + ": already seen " + decl.tlen);
-			}
-		}
-		else if( typeSignedness[lex.m_token] )
-		{
-			if (!decl.tsign || (decl.tsign == lex.m_token))
-			{
-				decl.tsign = lex.m_token;
-				if( decl.base && !integralTypeNames[decl.base] )
-				{
-					return lex.SetError( decl.tsign + " is invalid for " + decl.base );
-				}
-				lex.Next();
-			}
-			else
-			{
-				return lex.SetError("Unexpected " + lex.m_token + ": already seen " + decl.tsign);
-			}
-		}
-		else if( typeQualifiers[lex.m_token] )
-		{
-			if (!decl.tqual || (decl.tqual == lex.m_token))
-			{
-				decl.tqual = lex.m_token;
-				lex.Next();
-			}
-			else
-			{
-				return lex.SetError("Unexpected " + lex.m_token + ": already seen " + decl.tqual);
-			}			
+			;			
 		}
 		else if( compositeTypes[lex.m_token] )
 		{
@@ -337,33 +403,31 @@ function parseType(lex)
 				lex.Next();
 				if( ( lex.m_TT == TT.Char ) && ( lex.m_token == '{' ) )
 				{
-					decl.def = parseCompositeTypeDef(lex);
+					parseCompositeTypeDef(lex,decl);
 				}
 				else if( lex.m_TT == TT.Identifier )
 				{
 					var def = lex.m_context.TypeDef( lex.m_token );
 					if( def )
 					{
-						decl.name = lex.m_token;
+						decl.tname = lex.m_token;
 						decl.def = def;
 						lex.Next();
 					}
 					else if( !ReservedWords[lex.m_token] )
 					{
-						decl.name = lex.m_token;
-						lex.m_context.m_types[decl.name] = decl;
+						var child = {tname: lex.m_token, base:decl.base };
+						decl.base = 'typedef';
+						decl.def = child;
+						lex.m_context.m_types[child.tname] = child;
 						lex.Next();
 						if( ( lex.m_TT == TT.Char ) && ( lex.m_token == '{' ) )
 						{
-							decl.def = parseCompositeTypeDef(lex);
-						}
-						else if( ( lex.m_TT == TT.Char ) && ( lex.m_token == ';' ) )
-						{
-							return decl;
+							parseCompositeTypeDef(lex,child);
 						}
 						else
 						{
-							return lex.SetError( "Unexpected " + lex.m_token + ". Expected { or ;");
+							return lex.SetError( "Unexpected " + lex.m_token + ". Expected " + child.tname + " to be defined.");
 						}
 					}
 					else
@@ -390,8 +454,8 @@ function parseType(lex)
 			var td = lex.m_context.TypeDef( lex.m_token );
 			if( td )
 			{
-				decl.base = decl.base ? decl.base : 'typedef';
-				decl.name = lex.m_token;
+				decl.base = 'typedef';
+				decl.tname = lex.m_token;
 				decl.def = td;
 				lex.Next();
 			}
@@ -445,22 +509,19 @@ function parseTranslationUnit(lex)
 	// compound-statement: { declaration-list? statement-list? }
 
 	var type = parseType(lex);
+	var declarator = {};
 	var name = '';
 
 	if( lex.IsOK() && type )
 	{		
-		if (lex.m_TT == TT.Identifier)
-		{
-			name = lex.m_token;
-			lex.Next();
-		}
-		else if ((lex.m_TT == TT.Char) && (lex.m_token == ';'))
+		if ((lex.m_TT == TT.Char) && (lex.m_token == ';'))
 		{
 			return lex.Next();
 		}
 		else
 		{
-			return lex.SetError("Expected identifier or ; but got '" + lex.m_token + "'");
+			declarator = parseDeclarator(lex);
+			name = declarator.name;
 		}
 	}
 	else
@@ -505,18 +566,14 @@ function parseTranslationUnit(lex)
 
 mc.Parse=function(_data)
 {
-	var lex = new Lexer(_data, new Context());
-	var result = [];
+	var context = new Context();
+	var lex = new Lexer(_data, context);
 	while( lex.IsOK() )
 	{
-		var unit = parseTranslationUnit(lex);
-		if (unit)
-		{ 
-			result.push(unit);
-		}
+		parseTranslationUnit(lex);
 	}
 
-	return result;
+	return context;
 }
 
 // -------------------------------------
