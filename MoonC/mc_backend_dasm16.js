@@ -18,6 +18,10 @@ function dump( t, indent )
 				}
 			}
 		}
+		else if( typeof(t) === 'function' )
+		{
+			;
+		}
 		else
 		{
 			result += t;
