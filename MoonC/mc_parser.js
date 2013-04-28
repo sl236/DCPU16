@@ -1,231 +1,5 @@
 (function(){
-// -------------------------------------
 
-var TT = 
-{
-	Error:			0,
-	Char:			1,
-	Identifier:		2,
-	Integer:		3,
-	String:			4,
-	EOF:			5,
-
-	Names: []
-};
-for( var i in TT ) { TT.Names[TT[i]] = i; }
-
-// -------------------------------------
-
-var TokenMap = [];
-var EscapeMap = [ ];
-
-// -------------------------------------
-
-(function()
-{
-	var identifierStarts = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_';
-	for( var i = 0; i < identifierStarts.length; ++i )
-	{
-		TokenMap[identifierStarts[i]] = TT.Identifier;
-	}
-
-	var digits = '0123456789';
-	for (var i = 0; i < digits.length; ++i)
-	{
-		TokenMap[digits[i]] = TT.Integer;
-	}
-
-	TokenMap['"'] = TT.String;
-
-	EscapeMap['t'] = "\t";
-	EscapeMap['n'] = "\n";
-	EscapeMap['r'] = "\r";
-})();
-
-// -------------------------------------
-
-function Lexer(_data, _context) 
-{ 
-	this.m_data = _data;
-	this.m_pos = 0;
-	this.m_row = 0;
-	this.m_col = 0;
-	this.m_TT = TT.Error;
-	this.m_context = _context;
-	this.Next();
-}
-
-Lexer.prototype.PushContext = function()
-{
-	this.m_context = this.m_context.MakeChild();
-}
-
-Lexer.prototype.PopContext = function()
-{
-	this.m_context = this.m_context.GetParent();
-}
-
-Lexer.prototype.IsOK = function()
-{
-	return (this.m_TT != TT.EOF) && (this.m_TT != TT.Error);
-}
-
-Lexer.prototype.Warn = function(_message)
-{
-	Console.Log("Warning: line " + (this.m_row + 1) + " column " + (this.m_col + 1) + ": " + _message);
-}
-
-Lexer.prototype.SetError = function( _message )
-{
-	if( this.m_TT != TT.Error )
-	{
-		this.m_TT = TT.Error;
-		this.m_token = "Error: line " + (this.m_row + 1) + " column " + (this.m_col + 1) + ": " + _message;
-		Console.Log( this.m_token );
-	}
-	return 0;
-}
-
-Lexer.prototype.ConsumeChar = function(c)
-{
-	if( this.IsOK() && ( this.m_TT == TT.Char ) && (this.m_token == c) )
-	{
-		this.Next();
-	}
-	else
-	{
-		this.SetError( 'Expected: ' + c + ' got: ' + this.m_token );
-	}
-}
-
-Lexer.prototype.Next = function()
-{
-	var data = this.m_data;
-	var pos = this.m_pos;
-	var row = this.m_row;
-	var col = this.m_col;
-	var len = data.length;
-	var c;
-	while( (pos < len) && ((c = data[pos]) <= 32 ) )
-	{
-		if( c == "\n" )
-		{
-			col = 0;
-			++row;
-		}
-		else
-		{
-			++col;
-		}
-		pos++;
-	}
-
-	if( pos >= len )
-	{
-		this.m_pos = pos;
-		this.m_row = row;
-		this.m_col = col;
-		this.m_TT = TT.EOF;
-		return;
-	}
-
-	var start = pos;
-	var tt = TokenMap[c];
-	++col; ++pos;
-
-	switch( tt )
-	{
-		case TT.Identifier:
-			{
-				while( pos < len )
-				{
-					var cc = data[pos];
-					var t = TokenMap[cc];
-					if( ( t != TT.Identifier ) && ( t != TT.Integer ) )
-						break;
-					++col; 
-					++pos;
-					c += cc;
-				}
-			}
-			break;
-
-		case TT.Integer:
-			{
-				var radix = 10;
-				while (pos < len)
-				{
-					var cc = data[pos];
-					var t = TokenMap[cc];
-					if (t != TT.Integer)
-					{
-						if( ( c == '0') && ( cc == 'x' ) && ( radix == 10 ) )
-						{
-							c = '';
-							cc = '';
-							radix = 16;
-						}
-						else
-						{
-							break;
-						}
-					}
-					++col;
-					++pos;
-					c += cc;
-				}
-				c = parseInt(c, radix);
-			}
-			break;
-
-		case TT.String:
-			{
-				c = '';
-				this.m_pos = pos;
-				this.m_row = row;
-				this.m_col = col;
-
-				while (pos < len)
-				{
-					if( data[pos] == '\\' )
-					{
-						++col; ++pos;
-						var cc = EscapeMap[data[pos]];
-						c += cc ? cc : data[pos];
-						++col; ++pos;
-					}
-					else if( TokenMap[data[pos]] == TT.String )
-					{
-						++col; ++pos;
-						break;
-					}
-					else
-					{
-						c += data[pos];
-						++col; ++pos;
-					}
-
-				}
-
-				if( pos == len )
-				{
-					this.SetError("Unterminated string constant");
-					return;
-				}
-			}
-			break;
-
-		default:
-				tt = TT.Char;
-			break;
-	}
-
-	this.m_TT = tt;
-	this.m_token = c;
-	this.m_pos = pos;
-	this.m_row = row;
-	this.m_col = col;
-}
 
 // -------------------------------------
 var ReservedWords = { };
@@ -254,8 +28,9 @@ var compositeTypes = {};
 ['static', 'const', 'volatile'].map(function(i) { typeQualifiers[i] = i; });
 ['struct', 'union', 'class'].map(function(i) { compositeTypes[i] = i; });
 
-// -------------------------------------
 
+
+// -------------------------------------
 function Context(_parent)
 {
 	this.m_parent = _parent;
@@ -297,8 +72,9 @@ Context.prototype.IsDefined = function(_name)
 	return ReservedWords[_name] || this.TypeDef(_name) || this.FuncDef(_name) || this.VarDef(_name);
 }
 
-// -------------------------------------
 
+
+// -------------------------------------
 function parseSpecifierQualifier(lex,decl)
 {
 	// void, char, int, float, double
@@ -360,6 +136,9 @@ function parseSpecifierQualifier(lex,decl)
 	return 1;
 }
 
+
+
+// -------------------------------------
 function parseDeclarator(lex)
 {
 	if (lex.m_TT != TT.Identifier)
@@ -398,6 +177,10 @@ function parseDeclarator(lex)
 	return result;
 }
 
+
+
+
+// -------------------------------------
 function parseCompositeTypeDef(lex, decl)
 {
 	decl.members = [];
@@ -419,7 +202,10 @@ function parseCompositeTypeDef(lex, decl)
 	lex.ConsumeChar('}');
 }
 
-// -------------------
+
+
+
+// -------------------------------------
 function parseFunctionArgumentDeclaration(lex,decl)
 {
 	lex.ConsumeChar('(');
@@ -452,7 +238,10 @@ function parseFunctionArgumentDeclaration(lex,decl)
 	lex.ConsumeChar(')');
 }
 
-// -------------------
+
+
+
+// -------------------------------------
 function parseType(lex)
 {
 	var typedef = false;
@@ -523,7 +312,8 @@ function parseType(lex)
 				}		
 			}
 			else if( lex.m_token == 'enum' )
-			{			
+			{	
+				decl = { base: 'enum', members: [] };		
 				return lex.SetError("TODO: enums");
 			}
 			else 
@@ -563,15 +353,7 @@ function parseType(lex)
 			decl = { base: '(*)', retval: decl };
 			lex.Next();
 			lex.ConsumeChar('*');
-			if( lex.IsOK() && (lex.m_TT == TT.Identifier) )
-			{
-				decl.name = lex.m_token;
-				lex.Next();
-			}
-			else
-			{
-				lex.SetError("Expected an identifier");
-			}
+			decl.name = lex.ConsumeIdentifier();
 			lex.ConsumeChar(')');
 			parseFunctionArgumentDeclaration(lex, decl);
 
@@ -596,7 +378,10 @@ function parseType(lex)
 	return decl;
 }
 
-// ----------------------
+
+
+
+// -------------------------------------
 function parseExpression(lex)
 {
 	while( lex.IsOK() && !((lex.m_TT == TT.Char) && (lex.m_token == ';')) )
@@ -610,23 +395,27 @@ function parseExpression(lex)
 	}
 }
 
-// ----------------------
+
+
+
+// -------------------------------------
 function parseStatement(lex)
 {
 
-	return lex.SetError("parseStatement WIP")
+	var result = { 'op': lex.m_token };
 
 	if (((lex.m_TT == TT.Char) && (lex.m_token == '{')))
 	{
 		lex.PushContext();
-		var block = parseCodeBlock(lex);
-		return { 'op': 'block', 'data': block, 'ctx': lex.m_context };
+		result = { 
+				'op': 'block', 
+				'data': parseCodeBlock(lex), 
+				'ctx': (function(x){return function() { return x; }})(lex.m_context)
+			};
 		lex.PopContext();
 	}
 	else if ((lex.m_TT == TT.Identifier) && ReservedWords[lex.m_token])
 	{
-		var result = { 'op': lex.m_token };
-
 		switch (lex.m_token)
 		{
 			case "if":
@@ -651,6 +440,7 @@ function parseStatement(lex)
 					lex.ConsumeChar(')');
 					result.block = parseStatement(lex);
 				break;
+
 			case "do":
 					lex.Next();
 					result.block = parseStatement(lex);
@@ -662,15 +452,19 @@ function parseStatement(lex)
 						lex.ConsumeChar(';');
 					}
 				break;
+
 			case "for":
 					lex.Next();
 					lex.ConsumeChar('(');
-					result.init = parseStatement(lex);
+					result.init = parseExpression(lex);
+					lex.ConsumeChar(';');
 					result.cond = parseExpression(lex);
-					result.iter = parseStatement(lex, 1);
+					lex.ConsumeChar(';');
+					result.iter = parseExpression(lex);
 					lex.ConsumeChar(')');
 					result.block = parseStatement(lex);
 				break;
+
 			case "switch":
 					lex.Next();
 					lex.ConsumeChar('(');
@@ -678,29 +472,63 @@ function parseStatement(lex)
 					lex.ConsumeChar(')');
 					result.block = parseStatement(lex);
 				break;
-			case "case":
-					lex.Next();
-				break;
-			case "default":
-				break;
-			case "break":
-				break;
-			case "continue":
-				break;
-			case "return":
-				break;
-			case "goto":
-				break;
-			default:
-				return { 'op': 'expr', 'data': parseExpression(lex) };
-		}
 
-		return result;
+			case "case":					
+					lex.Next();
+					result.expr = parseExpression(lex);
+					lex.ConsumeChar(':');
+				break;
+
+			case "default":
+					lex.Next();
+					lex.ConsumeChar(':');
+				break;
+
+			case "break":
+					lex.Next();
+					lex.ConsumeChar(';');
+				break;
+
+			case "continue":
+					lex.Next();
+					lex.ConsumeChar(';');
+				break;
+
+			case "return":
+					lex.Next();
+					if( lex.IsOK() && !((lex.m_TT == TT.Char) && (lex.m_token == ';')) )
+					{
+						result.result = parseExpression(lex);
+					}
+					lex.ConsumeChar(';');
+				break;
+
+			case "goto":
+					lex.Next();
+					result.lbl = lex.ConsumeIdentifier();
+				break;
+
+			default:
+				return parseTranslationUnit(lex);
+		}
 	}
-	return { 'op': 'expr', 'data': parseExpression(lex) };
+	else if ((lex.m_TT == TT.Identifier) && ReservedWords[lex.m_token])
+	{
+		return parseTranslationUnit(lex);
+	}
+	else
+	{
+		result = { 'op': 'expr', 'data': parseExpression(lex) };
+		lex.ConsumeChar(';');
+	}
+
+	return result;
 }
 
-// ----------------------
+
+
+
+// -------------------------------------
 function parseCodeBlock(lex)
 {
 	var statements = [];
@@ -717,11 +545,14 @@ function parseCodeBlock(lex)
 }
 
 
-// ----------------------
+
+
+
+// -------------------------------------
 function parseTranslationUnit(lex)
 {
 	var type = parseType(lex);
-	var declarator = {};
+	var decl;
 	var name = '';
 
 	if( lex.IsOK() && Object.keys(type).length )
@@ -745,25 +576,27 @@ function parseTranslationUnit(lex)
 		return lex.SetError("Expected a declaration");
 	}
 	
-	if( lex.IsOK() )
+	while( lex.IsOK() )
 	{
 		if ((lex.m_TT == TT.Char) && (lex.m_token == ';'))
 		{
-			if( lex.m_context.IsDefined(name) )
+			var vd = lex.m_context.m_vars[name];
+			if( vd && !vd['extern'] )
 			{
-				var vd = lex.m_context.VarDef(name);
-				if( !( vd && vd['extern'] ) )
-				{
-					return lex.SetError("Duplicate declaration: " + lex.m_context.m_vars[name]);
-				}
+				return lex.SetError("Duplicate declaration: " + lex.m_context.m_vars[name]);
 			}
 			
 			lex.m_context.m_vars[name] = { 'type': type };
+			if( decl )
+			{
+				lex.m_context.m_vars[name].decl = decl;
+			}
 			return lex.Next();
 		}
 		else if ((lex.m_TT == TT.Char) && (lex.m_token == '='))
 		{
-			return lex.SetError("TODO: implement initialisers");
+			lex.ConsumeChar('=');
+			decl = parseExpression(lex);
 		}
 		else if ((lex.m_TT == TT.Char) && (lex.m_token == '('))
 		{
@@ -780,7 +613,7 @@ function parseTranslationUnit(lex)
 						lex.m_context.m_vars[fdecl.args[i].name] = fdecl.args[i];
 					}
 				}
-				fdecl['ctx'] = lex.m_context;
+				fdecl['ctx'] = (function(x){return function() { return x; }})(lex.m_context);
 				fdecl['block'] = parseCodeBlock(lex);
 				lex.PopContext();
 				return;
@@ -792,16 +625,12 @@ function parseTranslationUnit(lex)
 			return lex.SetError("Unexpected '" + lex.m_token + "', expecting = ( or ;");	
 		}
 	}
-	else
-	{
-		return lex.SetError("Unexpected " + lex.m_token);	
-	}
-	
-	return lex.SetError("TODO: implement declaration");	
 }
 
-// -------------------------------------
 
+
+
+// -------------------------------------
 mc.Parse=function(_data)
 {
 	var context = new Context();
@@ -813,6 +642,9 @@ mc.Parse=function(_data)
 
 	return context;
 }
+
+
+
 
 // -------------------------------------
 mc.Build=function(_data)
@@ -841,6 +673,9 @@ mc.Build=function(_data)
 		Console.Log("Parse failed.");
 	}
 }
+
+
+
 
 // -------------------------------------
 })();

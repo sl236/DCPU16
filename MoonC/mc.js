@@ -55,7 +55,7 @@ var mc = {
 	Output: 'dasm16'
 };
 
-load( '../Parser.js' );
+load( 'lexer.js' );
 load( 'mc_parser.js' );
 load( 'mc_backend_dasm16.js' );
 // ----------------------
