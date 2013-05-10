@@ -378,25 +378,149 @@ function parseType(lex)
 	return decl;
 }
 
+var UnaryOps = {
+        '-': { fn: function (x) { return -x; } },
+        '+': { fn: function (x) { return x; }   },
+        '!': { fn: function (x) { return !x; }  },
+        '~': { fn: function (x) { return !x; }  },
+        '*': {},
+        '&': {},
+        '--': {},
+        '++': {}
+};
 
+var BinaryOps = {
+    '-': { fn: function (x,y) { return x-y; } },
+    '+': { fn: function (x,y) { return x+y; } },
+    '*': { fn: function (x,y) { return x*y; } },
+    '/': { fn: function (x,y) { return x/y; } },
+};
+
+function parseTerm(lex)
+{
+    var result;
+    if( lex.m_TT == TT.String )
+    {
+        result = { 'op': 'string', 'const': 1, 'data': lex.m_token };
+        lex.Next();
+    }
+    else if (lex.m_TT == TT.Integer)
+    {
+        var d = lex.m_token;
+        var t = 'int';
+        lex.Next();
+
+        if ((lex.m_TT == TT.Char) && (lex.m_token == '.'))
+        {
+            t = 'float';
+            lex.Next();
+            if( lex.m_TT == TT.Integer )
+            {
+                d = d + '.' + lex.m_token;
+                lex.Next();
+            }
+
+            if ((lex.m_TT == TT.Char) && ((lex.m_token == 'e') || (lex.m_token == 'E')))
+            {
+                lex.Next();
+                if( lex.m_TT != TT.Integer )
+                {
+                    return lex.SetError("expected an integer exponent");
+                }
+
+                d = d + 'e' + lex.m_token;
+                lex.Next();
+            }
+
+            d = parseFloat('' + d);
+        }
+
+        result = { 'op': t, 'const': 1, 'data': d };
+    }
+    else if (lex.m_TT == TT.Identifier)
+    {
+        return lex.SetError("TODO: identifiers");
+    }
+    else if (lex.m_TT == TT.Char)
+    {
+        if( lex.m_token == '(' )
+        {
+            lex.Next();
+            result = parseExpressionSequence(lex);
+            lex.ConsumeChar(')');
+        }
+        else if( ( lex.m_token == '-' ) || ( lex.m_token == '+' ) )
+        {
+            var op = lex.m_token;
+            lex.Next();
+            if( (lex.m_TT == TT.Char) && (lex.m_token == op) )
+            {
+                op += op;
+                lex.Next();
+            }
+            result = parseTerm(lex);
+            if (result && result.const && UnaryOps[op].fn) {
+                result.data = UnaryOps[op].fn(result.data);
+            }
+            else
+            {
+                result = { 'op': op, 'const': 0, 'data': result }
+            }
+        }
+        else if (UnaryOps[lex.m_token])
+        {
+            var op = lex.m_token;
+            lex.Next();
+            result = parseTerm(lex);
+            if (result && result.const && UnaryOps[op].fn)
+            {
+                result.data = UnaryOps[op].fn(result.data);
+            }
+            else
+            {
+                result = { 'op': op, 'const': 0, 'data': result }
+            }
+        }
+        else
+        {
+            return lex.SetError("Expected a term, got " + lex.m_token);
+        }
+    }
+    else
+    {
+        return lex.SetError("Expected a term, got " + lex.m_token);
+    }
+
+    return result;
+}
 
 
 // -------------------------------------
 function parseExpression(lex)
 {
-	while( lex.IsOK() && !((lex.m_TT == TT.Char) && (lex.m_token == ';')) )
-	{
-		var sequence = [];
-		while( lex.IsOK() && !((lex.m_TT == TT.Char) && (lex.m_token == ',')) )
-		{
-			return lex.SetError("TODO: expressions");
-		}
-		
-	}
+    // TODO: expressions
+    var x = parseTerm(lex);
+    if( ( lex.m_TT == TT.Char ) && ( '-+*/'.indexOf(lex.m_token) > 0 ) )
+    {
+
+    }
 }
 
+function parseExpressionSequence(lex) {
+    var sequence = [];
+    
+    do
+    {
+        sequence.push(parseExpression(lex));
+    } while (lex.ConsumeOptionalChar(','))
 
+    if (sequence.length == 1)
+    {
+        return sequence[0];
+    }
 
+    return { 'op': ',', 'const': 0, 'data': sequence };
+}
 
 // -------------------------------------
 function parseStatement(lex)
@@ -422,7 +546,7 @@ function parseStatement(lex)
 				{
 					lex.Next();
 					lex.ConsumeChar('(');
-					result.cond = parseExpression(lex);
+					result.cond = parseExpressionSequence(lex);
 					lex.ConsumeChar(')');
 					result.block = parseStatement(lex);
 					if( lex.IsOK() && (lex.m_TT == TT.Identifier) && (lex.m_token == 'else') )
@@ -436,7 +560,7 @@ function parseStatement(lex)
 			case "while":
 					lex.Next();
 					lex.ConsumeChar('(');
-					result.cond = parseExpression(lex);
+					result.cond = parseExpressionSequence(lex);
 					lex.ConsumeChar(')');
 					result.block = parseStatement(lex);
 				break;
@@ -447,7 +571,7 @@ function parseStatement(lex)
 					if( lex.IsOK() && (lex.m_TT == TT.Identifier) && (lex.m_token == 'while') )
 					{
 						lex.ConsumeChar('(');
-						result.cond = parseExpression(lex);
+						result.cond = parseExpressionSequence(lex);
 						lex.ConsumeChar(')');
 						lex.ConsumeChar(';');
 					}
@@ -456,11 +580,11 @@ function parseStatement(lex)
 			case "for":
 					lex.Next();
 					lex.ConsumeChar('(');
-					result.init = parseExpression(lex);
+					result.init = parseExpressionSequence(lex);
 					lex.ConsumeChar(';');
-					result.cond = parseExpression(lex);
+					result.cond = parseExpressionSequence(lex);
 					lex.ConsumeChar(';');
-					result.iter = parseExpression(lex);
+					result.iter = parseExpressionSequence(lex);
 					lex.ConsumeChar(')');
 					result.block = parseStatement(lex);
 				break;
@@ -468,7 +592,7 @@ function parseStatement(lex)
 			case "switch":
 					lex.Next();
 					lex.ConsumeChar('(');
-					result.cond = parseExpression(lex);
+					result.cond = parseExpressionSequence(lex);
 					lex.ConsumeChar(')');
 					result.block = parseStatement(lex);
 				break;
@@ -498,7 +622,7 @@ function parseStatement(lex)
 					lex.Next();
 					if( lex.IsOK() && !((lex.m_TT == TT.Char) && (lex.m_token == ';')) )
 					{
-						result.result = parseExpression(lex);
+						result.result = parseExpressionSequence(lex);
 					}
 					lex.ConsumeChar(';');
 				break;
@@ -518,7 +642,7 @@ function parseStatement(lex)
 	}
 	else
 	{
-		result = { 'op': 'expr', 'data': parseExpression(lex) };
+	    result = parseExpressionSequence(lex);
 		lex.ConsumeChar(';');
 	}
 

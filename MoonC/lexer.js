@@ -113,6 +113,14 @@ Lexer.prototype.ConsumeChar = function(c)
 	}
 }
 
+Lexer.prototype.ConsumeOptionalChar = function (c) {
+    if (this.IsOK() && (this.m_TT == TT.Char) && (this.m_token == c)) {
+        this.Next();
+        return 1;
+    }
+    return 0;
+}
+
 Lexer.prototype.Next = function()
 {
 	var data = this.m_data;
@@ -121,7 +129,7 @@ Lexer.prototype.Next = function()
 	var col = this.m_col;
 	var len = data.length;
 	var c;
-	while( (pos < len) && ((c = data[pos]) <= 32 ) )
+	while( (pos < len) && ((c = data[pos]) <= ' ' ) )
 	{
 		if( c == "\n" )
 		{
@@ -189,6 +197,7 @@ Lexer.prototype.Next = function()
 					++pos;
 					c += cc;
 				}
+
 				c = parseInt(c, radix);
 			}
 			break;

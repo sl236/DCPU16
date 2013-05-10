@@ -25,4 +25,11 @@ void testfn( int a );
 
 void testfn( int a )
 {
+	0;
+	1;
+	2; 
+	345; 
+	7.5;
+	-2;
+	-(4);
 }
